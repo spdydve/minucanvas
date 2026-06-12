@@ -1,0 +1,17 @@
+:root,
+[data-theme="light"],
+.minucanvas--theme-light {
+  color-scheme: light;
+  --mc-canvas-bg: #f8fafc;
+  --mc-canvas-surface: #ffffff;
+  --mc-canvas-border: rgba(100, 116, 139, 0.24);
+  --mc-canvas-grid: rgba(100, 116, 139, 0.15);
+  --mc-canvas-text: #111827;
+  --mc-canvas-muted: #64748b;
+  --mc-canvas-accent: #2563eb;
+  --mc-canvas-accent-soft: rgba(37, 99, 235, 0.14);
+  --mc-shape-stroke: #111827;
+  --mc-shape-text: #111827;
+  --mc-line: #111827;
+  --mc-line-selected: #2563eb;
+}

@@ -1,0 +1,483 @@
+:root {
+  color-scheme: light dark;
+}
+
+.minucanvas {
+  /* Canvas/surface theme tokens */
+  --mc-canvas-bg: #f8fafc;
+  --mc-canvas-surface: #ffffff;
+  --mc-canvas-border: rgba(100, 116, 139, 0.24);
+  --mc-canvas-grid: rgba(100, 116, 139, 0.15);
+  --mc-canvas-text: #111827;
+  --mc-canvas-muted: #64748b;
+  --mc-canvas-accent: #2563eb;
+  --mc-canvas-accent-soft: rgba(37, 99, 235, 0.14);
+
+  /* Shape theme tokens. The base shape theme is a simple outline. */
+  --mc-shape-fill: transparent;
+  --mc-shape-stroke: #111827;
+  --mc-shape-text: var(--mc-canvas-text);
+  --mc-shape-selected: var(--mc-canvas-accent);
+  --mc-shape-stroke-width: 1.5px;
+  --mc-shape-radius: 10px;
+  --mc-shape-shadow: none;
+
+  /* Line theme tokens */
+  --mc-line: #111827;
+  --mc-line-selected: var(--mc-canvas-accent);
+  --mc-line-width: 1.5px;
+
+  --mc-font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border: 1px solid var(--mc-border, var(--mc-canvas-border));
+  border-radius: var(--mc-radius, 14px);
+  background: var(--mc-bg, var(--mc-canvas-bg));
+  color: var(--mc-text, var(--mc-canvas-text));
+  font-family: var(--mc-font-family);
+  outline: none;
+  touch-action: none;
+  user-select: none;
+}
+
+.minucanvas:focus-visible {
+  box-shadow: 0 0 0 3px var(--mc-accent-soft, var(--mc-canvas-accent-soft));
+}
+
+.minucanvas--grid {
+  background-image:
+    linear-gradient(var(--mc-grid, var(--mc-canvas-grid)) 1px, transparent 1px),
+    linear-gradient(90deg, var(--mc-grid, var(--mc-canvas-grid)) 1px, transparent 1px);
+  background-size: var(--mc-grid-size, 20px) var(--mc-grid-size, 20px);
+}
+
+.minucanvas[data-tool="hand"],
+.minucanvas[data-tool="hand"] .minucanvas-node {
+  cursor: grab;
+}
+
+.minucanvas[data-tool="arrow"] .minucanvas-node,
+.minucanvas[data-tool="line"] .minucanvas-node {
+  cursor: crosshair;
+}
+
+.minucanvas[data-tool="text"],
+.minucanvas[data-tool="rectangle"],
+.minucanvas[data-tool="diamond"],
+.minucanvas[data-tool="ellipse"],
+.minucanvas[data-tool="pill"] {
+  cursor: copy;
+}
+
+.minucanvas-world {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.minucanvas-edges,
+.minucanvas-overlays {
+  position: absolute;
+  inset: 0;
+  width: 1px;
+  height: 1px;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.minucanvas-overlays {
+  z-index: 40;
+}
+
+.minucanvas-edge__path,
+.minucanvas-edge__preview,
+.minucanvas-edge__sketch-shadow {
+  fill: none;
+  stroke: var(--mc-line, var(--mc-edge, #111827));
+  stroke-width: var(--mc-line-width, 1.5px);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.minucanvas-edge__hit-area {
+  fill: none;
+  stroke: transparent;
+  stroke-width: var(--mc-edge-hit-width, 18px);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  cursor: pointer;
+  pointer-events: stroke;
+}
+
+.minucanvas-edge__hit-area:hover + .minucanvas-edge__path,
+.minucanvas-edge--selected .minucanvas-edge__path {
+  stroke: var(--mc-line-selected, var(--mc-edge-selected, var(--mc-canvas-accent)));
+  stroke-width: calc(var(--mc-line-width, 1.5px) + 1px);
+}
+
+.minucanvas-edge__sketch-shadow {
+  stroke: color-mix(in srgb, var(--mc-line, #111827) 72%, transparent);
+  stroke-width: 1px;
+  transform: translate(1.5px, -1px);
+  opacity: 0.68;
+}
+
+.minucanvas-edge__preview {
+  stroke: var(--mc-accent, var(--mc-canvas-accent));
+  stroke-dasharray: 7 7;
+  pointer-events: none;
+}
+
+.minucanvas-edges marker path {
+  fill: var(--mc-line, var(--mc-edge, #111827));
+}
+
+.minucanvas-edge--selected marker path {
+  fill: var(--mc-line-selected, var(--mc-edge-selected, var(--mc-canvas-accent)));
+}
+
+.minucanvas-edge-handles,
+.minucanvas-resize-handles,
+.minucanvas-add-handles {
+  pointer-events: all;
+}
+
+.minucanvas-add-handle {
+  cursor: pointer;
+  pointer-events: all;
+}
+
+.minucanvas-add-handle circle {
+  fill: var(--mc-surface, var(--mc-canvas-surface));
+  stroke: var(--mc-node-selected, var(--mc-shape-selected));
+  stroke-width: 1.5px;
+}
+
+.minucanvas-add-handle__plus {
+  fill: var(--mc-node-selected, var(--mc-shape-selected));
+  font-size: 17px;
+  font-weight: 700;
+  pointer-events: none;
+  user-select: none;
+}
+
+.minucanvas-add-handle__hint {
+  fill: var(--mc-muted, var(--mc-canvas-muted));
+  font-size: 10px;
+  opacity: 0;
+  pointer-events: none;
+  user-select: none;
+}
+
+.minucanvas-add-handle:hover circle {
+  fill: var(--mc-node-selected, var(--mc-shape-selected));
+}
+
+.minucanvas-add-handle:hover .minucanvas-add-handle__plus {
+  fill: var(--mc-surface, var(--mc-canvas-surface));
+}
+
+.minucanvas-add-handle:hover .minucanvas-add-handle__hint {
+  opacity: 1;
+}
+
+.minucanvas-resize-handle {
+  fill: var(--mc-surface, var(--mc-canvas-surface));
+  stroke: var(--mc-node-selected, var(--mc-shape-selected));
+  stroke-width: 1.5px;
+  pointer-events: all;
+}
+
+.minucanvas-resize-handle--n,
+.minucanvas-resize-handle--s {
+  cursor: ns-resize;
+}
+
+.minucanvas-resize-handle--e,
+.minucanvas-resize-handle--w {
+  cursor: ew-resize;
+}
+
+.minucanvas-resize-handle--nw,
+.minucanvas-resize-handle--se {
+  cursor: nwse-resize;
+}
+
+.minucanvas-resize-handle--ne,
+.minucanvas-resize-handle--sw {
+  cursor: nesw-resize;
+}
+
+.minucanvas-resize-handle:hover {
+  fill: var(--mc-node-selected, var(--mc-shape-selected));
+}
+
+.minucanvas-edge-handle {
+  fill: var(--mc-surface, var(--mc-canvas-surface));
+  stroke: var(--mc-line-selected, var(--mc-edge-selected, var(--mc-canvas-accent)));
+  stroke-width: 2px;
+  cursor: grab;
+  pointer-events: all;
+}
+
+.minucanvas-edge-handle:hover {
+  fill: var(--mc-line-selected, var(--mc-edge-selected, var(--mc-canvas-accent)));
+}
+
+.minucanvas-edge-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  z-index: 4;
+  max-width: 160px;
+  border: 1px solid var(--mc-border, var(--mc-canvas-border));
+  border-radius: 999px;
+  background: var(--mc-surface, var(--mc-canvas-surface));
+  color: var(--mc-muted, var(--mc-canvas-muted));
+  font-size: 12px;
+  line-height: 1.2;
+  padding: 4px 8px;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+  white-space: nowrap;
+  pointer-events: auto;
+  user-select: none;
+}
+
+.minucanvas-edge-label--editing {
+  min-width: 72px;
+  cursor: text;
+  outline: none;
+  user-select: text;
+  white-space: pre-wrap;
+}
+
+.minucanvas-edge-label--editing:empty::before {
+  content: "Label";
+  color: var(--mc-muted, var(--mc-canvas-muted));
+}
+
+.minucanvas-node {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: var(--mc-node-opacity, 1);
+  color: var(--mc-node-text, var(--mc-shape-text));
+  font-size: var(--mc-node-font-size, 14px);
+  font-weight: var(--mc-node-font-weight, 500);
+  text-align: center;
+  cursor: grab;
+  touch-action: none;
+}
+
+.minucanvas-node::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border: var(--mc-node-stroke-width, var(--mc-shape-stroke-width)) solid var(--mc-node-stroke, var(--mc-shape-stroke));
+  border-radius: var(--mc-node-radius, var(--mc-shape-radius));
+  background: var(--mc-node-fill, var(--mc-shape-fill));
+  box-shadow: var(--mc-node-shadow, var(--mc-shape-shadow));
+  transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+}
+
+.minucanvas-node--rectangle::before {
+  border-radius: 2px;
+}
+
+.minucanvas-node--rounded-rectangle::before {
+  border-radius: var(--mc-node-radius, var(--mc-shape-radius));
+}
+
+.minucanvas-node--pill::before,
+.minucanvas-node--ellipse::before {
+  border-radius: 999px;
+}
+
+.minucanvas-node--diamond::before,
+.minucanvas-node--parallelogram::before,
+.minucanvas-node--hexagon::before {
+  display: none;
+}
+
+.minucanvas-node__shape {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.minucanvas-node__shape path {
+  fill: var(--mc-node-fill, var(--mc-shape-fill));
+  stroke: var(--mc-node-stroke, var(--mc-shape-stroke));
+  stroke-width: var(--mc-node-stroke-width, var(--mc-shape-stroke-width));
+  vector-effect: non-scaling-stroke;
+}
+
+.minucanvas-node--selected .minucanvas-node__shape path,
+.minucanvas-node--connector-source .minucanvas-node__shape path {
+  stroke: var(--mc-node-selected, var(--mc-shape-selected));
+}
+
+.minucanvas-node--connector-source .minucanvas-node__shape path {
+  stroke-dasharray: 6 5;
+}
+
+.minucanvas-node--selected::before,
+.minucanvas-node--connector-source::before {
+  border-color: var(--mc-node-selected, var(--mc-shape-selected));
+  box-shadow: 0 0 0 4px var(--mc-accent-soft, var(--mc-canvas-accent-soft)), var(--mc-node-shadow, var(--mc-shape-shadow));
+}
+
+.minucanvas-node--connector-source::before {
+  border-style: dashed;
+}
+
+.minucanvas-node--editing::before {
+  border-style: dashed;
+}
+
+.minucanvas-node__content {
+  width: 100%;
+  max-height: 100%;
+  padding: 14px 18px;
+  overflow: hidden;
+  outline: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.minucanvas-node--diamond .minucanvas-node__content,
+.minucanvas-node--hexagon .minucanvas-node__content,
+.minucanvas-node--parallelogram .minucanvas-node__content {
+  padding-inline: 28px;
+}
+
+.minucanvas-node--diamond.minucanvas-node--selected,
+.minucanvas-node--diamond.minucanvas-node--connector-source,
+.minucanvas-node--hexagon.minucanvas-node--selected,
+.minucanvas-node--hexagon.minucanvas-node--connector-source,
+.minucanvas-node--parallelogram.minucanvas-node--selected,
+.minucanvas-node--parallelogram.minucanvas-node--connector-source {
+  filter: drop-shadow(0 0 0 var(--mc-node-selected, var(--mc-shape-selected))) drop-shadow(0 0 6px var(--mc-accent-soft, var(--mc-canvas-accent-soft)));
+}
+
+.minucanvas-node__content[contenteditable="true"] {
+  cursor: text;
+  user-select: text;
+}
+
+.minucanvas-node__muted,
+.minucanvas-node__group-label {
+  color: var(--mc-muted, var(--mc-canvas-muted));
+}
+
+.minucanvas-node--type-group {
+  align-items: flex-start;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.minucanvas-node--type-group::before {
+  background: color-mix(in srgb, var(--mc-node-fill, var(--mc-shape-fill)) 52%, transparent);
+  border-style: dashed;
+}
+
+.minucanvas-status {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 20;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid var(--mc-border, var(--mc-canvas-border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--mc-surface, var(--mc-canvas-surface)) 92%, transparent);
+  color: var(--mc-muted, var(--mc-canvas-muted));
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.10);
+  font-size: 12px;
+  padding: 6px 10px;
+  pointer-events: none;
+}
+
+.minucanvas--readonly .minucanvas-node,
+.minucanvas--readonly .minucanvas-edge__path {
+  cursor: default;
+}
+
+/* Shape themes: independent from light/dark canvas themes. */
+.minucanvas--shape-outline {
+  --mc-shape-fill: transparent;
+  --mc-shape-shadow: none;
+  --mc-shape-stroke-width: 1.5px;
+}
+
+.minucanvas--shape-filled {
+  --mc-shape-fill: var(--mc-surface, var(--mc-canvas-surface));
+  --mc-shape-shadow: 0 10px 28px rgba(15, 23, 42, 0.10);
+  --mc-shape-stroke-width: 1.5px;
+}
+
+.minucanvas--shape-soft {
+  --mc-shape-fill: color-mix(in srgb, var(--mc-shape-stroke) 8%, transparent);
+  --mc-shape-shadow: none;
+  --mc-shape-stroke-width: 1.5px;
+}
+
+/* Canvas themes: surface/grid/text/line defaults only. */
+.minucanvas--theme-light,
+[data-theme="light"] .minucanvas:not(.minucanvas--theme-dark) {
+  --mc-canvas-bg: #f8fafc;
+  --mc-canvas-surface: #ffffff;
+  --mc-canvas-border: rgba(100, 116, 139, 0.24);
+  --mc-canvas-grid: rgba(100, 116, 139, 0.15);
+  --mc-canvas-text: #111827;
+  --mc-canvas-muted: #64748b;
+  --mc-canvas-accent: #2563eb;
+  --mc-canvas-accent-soft: rgba(37, 99, 235, 0.14);
+  --mc-shape-stroke: #111827;
+  --mc-shape-text: #111827;
+  --mc-line: #111827;
+}
+
+.minucanvas--theme-dark,
+[data-theme="dark"] .minucanvas:not(.minucanvas--theme-light),
+.dark .minucanvas:not(.minucanvas--theme-light) {
+  --mc-canvas-bg: #151515;
+  --mc-canvas-surface: #1b1b1b;
+  --mc-canvas-border: rgba(255, 255, 255, 0.12);
+  --mc-canvas-grid: rgba(255, 255, 255, 0.055);
+  --mc-canvas-text: #f4f4f5;
+  --mc-canvas-muted: #a1a1aa;
+  --mc-canvas-accent: #9ca3ff;
+  --mc-canvas-accent-soft: rgba(156, 163, 255, 0.18);
+  --mc-shape-stroke: #f5f5f5;
+  --mc-shape-text: #f8fafc;
+  --mc-line: #f5f5f5;
+  --mc-line-selected: #c7d2fe;
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  .minucanvas:not(.minucanvas--theme-light) {
+    --mc-canvas-bg: #151515;
+    --mc-canvas-surface: #1b1b1b;
+    --mc-canvas-border: rgba(255, 255, 255, 0.12);
+    --mc-canvas-grid: rgba(255, 255, 255, 0.055);
+    --mc-canvas-text: #f4f4f5;
+    --mc-canvas-muted: #a1a1aa;
+    --mc-canvas-accent: #9ca3ff;
+    --mc-canvas-accent-soft: rgba(156, 163, 255, 0.18);
+    --mc-shape-stroke: #f5f5f5;
+    --mc-shape-text: #f8fafc;
+    --mc-line: #f5f5f5;
+    --mc-line-selected: #c7d2fe;
+  }
+}

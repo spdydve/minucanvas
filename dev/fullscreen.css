@@ -1,0 +1,111 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #151515;
+  color: #f4f4f5;
+}
+
+.fullscreen-shell {
+  width: 100vw;
+  height: 100vh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  background: #151515;
+}
+
+.fullscreen-topbar {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(21, 21, 21, 0.92);
+  backdrop-filter: blur(10px);
+}
+
+.fullscreen-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.fullscreen-title h1 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.fullscreen-title span {
+  color: #a1a1aa;
+  font-size: 12px;
+}
+
+.fullscreen-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.fullscreen-tools button,
+.fullscreen-tools a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  background: #1f1f1f;
+  color: #f4f4f5;
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 12px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.fullscreen-tools button:hover,
+.fullscreen-tools a:hover,
+.fullscreen-tools button.active {
+  border-color: #c7d2fe;
+  color: #ffffff;
+  background: #2b2b36;
+}
+
+.fullscreen-canvas {
+  min-height: 0;
+}
+
+.fullscreen-canvas .minucanvas {
+  width: 100%;
+  height: 100%;
+  border: none;
+  border-radius: 0;
+}
+
+@media (max-width: 760px) {
+  .fullscreen-title span {
+    display: none;
+  }
+
+  .fullscreen-tools button {
+    padding-inline: 8px;
+  }
+}

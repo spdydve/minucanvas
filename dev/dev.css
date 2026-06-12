@@ -1,0 +1,221 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #f3f5f8;
+  color: #111827;
+}
+
+button, select {
+  font: inherit;
+}
+
+.app {
+  min-height: 100vh;
+}
+
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 20px;
+  padding: 24px 32px 16px;
+  background: #fff;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.app-header h1 {
+  margin: 0 0 4px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 18px;
+}
+
+.app-header p {
+  margin: 0;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.header-controls label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #64748b;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.header-controls .checkbox-control {
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.header-controls .checkbox-control input {
+  accent-color: #2563eb;
+}
+
+.header-controls select,
+.header-controls button,
+.header-controls a,
+.toolbar button {
+  border: 1px solid #d7dce3;
+  border-radius: 999px;
+  background: #fff;
+  color: #202735;
+  padding: 8px 12px;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.app-main {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.toolbar button {
+  text-transform: capitalize;
+}
+
+.toolbar button.active,
+.header-controls button:hover,
+.toolbar button:hover {
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.canvas-frame {
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 20px;
+  margin-top: 24px;
+}
+
+.info-grid article {
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: #fff;
+  padding: 18px;
+}
+
+.info-grid h2 {
+  margin: 0 0 12px;
+  color: #334155;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.info-grid ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.info-grid li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #64748b;
+  font-size: 13px;
+}
+
+kbd {
+  min-width: 92px;
+  display: inline-flex;
+  justify-content: center;
+  border: 1px solid #cbd5e1;
+  border-bottom-width: 2px;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #334155;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 11px;
+  padding: 4px 7px;
+}
+
+pre {
+  max-height: 420px;
+  overflow: auto;
+  margin: 0;
+  border-radius: 10px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-size: 12px;
+  padding: 14px;
+}
+
+.app--theme-dark {
+  background: #090d12;
+  color: #e5e7eb;
+}
+
+.app--theme-dark .app-header,
+.app--theme-dark .canvas-frame,
+.app--theme-dark .info-grid article {
+  background: #0f172a;
+  border-color: #1e293b;
+}
+
+.app--theme-dark .header-controls select,
+.app--theme-dark .header-controls button,
+.app--theme-dark .toolbar button {
+  background: #111827;
+  color: #e5e7eb;
+  border-color: #334155;
+}
+
+.app--theme-dark .toolbar button.active,
+.app--theme-dark .toolbar button:hover,
+.app--theme-dark .header-controls button:hover {
+  border-color: #60a5fa;
+  background: #172554;
+  color: #bfdbfe;
+}
+
+.app--theme-dark kbd {
+  border-color: #334155;
+  background: #111827;
+  color: #cbd5e1;
+}
+
+@media (max-width: 800px) {
+  .app-header,
+  .info-grid {
+    display: block;
+  }
+
+  .header-controls {
+    margin-top: 16px;
+  }
+
+  .info-grid article + article {
+    margin-top: 16px;
+  }
+}

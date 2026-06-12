@@ -1,0 +1,68 @@
+{
+  "name": "@dpklabs/minucanvas",
+  "version": "0.1.0",
+  "description": "Reusable React canvas editor built around JSON Canvas for simple diagrams and extensible app canvases",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./theme.css": "./dist/theme.css",
+    "./themes/light.css": "./dist/themes/light.css",
+    "./themes/dark.css": "./dist/themes/dark.css"
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": [
+    "*.css",
+    "themes/*.css"
+  ],
+  "scripts": {
+    "clean": "rm -rf dist ./*.tgz",
+    "dev": "vite dev --config vite.dev.config.ts",
+    "build": "tsc -p tsconfig.build.json && vite build",
+    "build:release": "npm run clean && npm run build",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "check:package": "npm run typecheck && npm test && npm run build && npm pack --dry-run"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0",
+    "react-dom": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^22.15.3",
+    "@types/react": "^18.3.21",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.4.1",
+    "jsdom": "^26.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.4",
+    "vite-plugin-dts": "^4.5.3",
+    "vitest": "^3.1.2"
+  },
+  "keywords": [
+    "canvas",
+    "jsoncanvas",
+    "diagram",
+    "flowchart",
+    "react",
+    "obsidian",
+    "excalidraw"
+  ],
+  "author": "dpklabs",
+  "license": "MIT"
+}
