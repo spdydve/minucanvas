@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
-import { MinuCanvas } from '../src/index'
+import { CanvasStyleToolbar, CanvasToolbar, MinuCanvas } from '../src/index'
 import { defaultCanvasShortcuts } from '../src/index'
 import type { CanvasHandle, CanvasShapeTheme, CanvasThemeMode, CanvasTool, JsonCanvasDocument } from '../src/index'
 import '../src/theme/theme.css'
@@ -148,15 +148,14 @@ export default function App() {
       </header>
 
       <main className="app-main">
-        <section className="toolbar" aria-label="Canvas tools">
-          {(['select', 'hand', 'arrow', 'line', 'text', 'rectangle', 'diamond', 'ellipse', 'pill'] as CanvasTool[]).map((item) => (
-            <button key={item} className={tool === item ? 'active' : ''} onClick={() => setTool(item)}>
-              {item}
-            </button>
-          ))}
-        </section>
-
         <section className="canvas-frame">
+          <CanvasToolbar tool={tool} onToolChange={setTool} className="canvas-frame__toolbar" orientation="vertical" />
+          <CanvasStyleToolbar
+            value={document}
+            selection={selected}
+            onChange={(next) => setDocument(next)}
+            className="canvas-frame__style-toolbar"
+          />
           <MinuCanvas
             ref={canvasRef}
             value={document}

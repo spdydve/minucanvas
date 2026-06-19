@@ -90,7 +90,23 @@ body {
 }
 
 .fullscreen-canvas {
+  position: relative;
   min-height: 0;
+}
+
+.fullscreen-canvas__toolbar {
+  position: absolute;
+  left: 14px;
+  top: 14px;
+  z-index: 30;
+}
+
+.fullscreen-canvas__style-toolbar {
+  position: absolute;
+  left: 50%;
+  bottom: 22px;
+  z-index: 35;
+  transform: translateX(-50%);
 }
 
 .fullscreen-canvas .minucanvas {

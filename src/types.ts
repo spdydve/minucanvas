@@ -37,16 +37,21 @@ export type CanvasEdgeRouting = 'straight' | 'curved' | 'elbow'
 export type CanvasStrokeStyle = 'solid' | 'dashed' | 'dotted' | 'sketch'
 export type CanvasThemeMode = 'light' | 'dark' | 'system'
 export type CanvasShapeTheme = 'outline' | 'filled' | 'soft'
+export type CanvasAlignment = 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom'
+export type CanvasDistribution = 'horizontal' | 'vertical'
 
 export interface CanvasNodeStyle {
   fill?: string
   stroke?: string
   text?: string
   strokeWidth?: number
+  strokeStyle?: CanvasStrokeStyle
   borderRadius?: number
   opacity?: number
+  fontFamily?: string
   fontSize?: number
   fontWeight?: CSSProperties['fontWeight']
+  textAlign?: CSSProperties['textAlign']
 }
 
 export interface CanvasEdgeStyle {
@@ -78,6 +83,7 @@ export type CanvasNode<NodeExtra extends Record<string, unknown> = Record<string
   background?: string
   shape?: CanvasShape
   style?: CanvasNodeStyle
+  groupId?: string
 }
 
 export type CanvasEdge<EdgeExtra extends Record<string, unknown> = Record<string, unknown>> = EdgeExtra & {
@@ -145,6 +151,12 @@ export interface CanvasHandle<NodeExtra extends Record<string, unknown> = Record
   setTool: (tool: CanvasTool) => void
   createNode: (partial: Partial<CanvasNode<NodeExtra>>) => CanvasNode<NodeExtra>
   createEdge: (fromNode: string, toNode: string, partial?: Partial<CanvasEdge<EdgeExtra>>) => CanvasEdge<EdgeExtra> | null
+  groupSelection: () => CanvasNode<NodeExtra> | null
+  ungroupSelection: () => void
+  bringSelectionToFront: () => void
+  sendSelectionToBack: () => void
+  alignSelection: (alignment: CanvasAlignment) => void
+  distributeSelection: (distribution: CanvasDistribution) => void
   zoomIn: () => void
   zoomOut: () => void
   resetView: () => void

@@ -66,8 +66,7 @@ button, select {
 
 .header-controls select,
 .header-controls button,
-.header-controls a,
-.toolbar button {
+.header-controls a {
   border: 1px solid #d7dce3;
   border-radius: 999px;
   background: #fff;
@@ -83,29 +82,32 @@ button, select {
   padding: 24px;
 }
 
-.toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.toolbar button {
-  text-transform: capitalize;
-}
-
-.toolbar button.active,
-.header-controls button:hover,
-.toolbar button:hover {
+.header-controls button:hover {
   border-color: #2563eb;
   background: #eff6ff;
   color: #1d4ed8;
 }
 
 .canvas-frame {
+  position: relative;
   border-radius: 16px;
   background: #fff;
   box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
+}
+
+.canvas-frame__toolbar {
+  position: absolute;
+  left: 14px;
+  top: 14px;
+  z-index: 30;
+}
+
+.canvas-frame__style-toolbar {
+  position: absolute;
+  left: 62px;
+  top: 14px;
+  right: 14px;
+  z-index: 30;
 }
 
 .info-grid {

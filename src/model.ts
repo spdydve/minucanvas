@@ -1,4 +1,4 @@
-import type { CanvasEdge, CanvasNode, CanvasSelection, CanvasShape, CanvasTool, JsonCanvasDocument } from './types'
+import type { CanvasAlignment, CanvasDistribution, CanvasEdge, CanvasNode, CanvasSelection, CanvasShape, CanvasTool, JsonCanvasDocument } from './types'
 
 const DEFAULT_NODE_WIDTH = 220
 const DEFAULT_NODE_HEIGHT = 120
@@ -61,6 +61,7 @@ export function createCanvasNode<NodeExtra extends Record<string, unknown> = Rec
     background: partial.background,
     shape: partial.shape ?? (type === 'group' ? 'rounded-rectangle' : 'rounded-rectangle'),
     style: partial.style,
+    groupId: partial.groupId,
   } as CanvasNode<NodeExtra>
 
   return node
@@ -103,6 +104,9 @@ export function deleteSelection<NodeExtra extends Record<string, unknown>, EdgeE
   selection: CanvasSelection,
 ): JsonCanvasDocument<NodeExtra, EdgeExtra> {
   const nodeIds = new Set(selection.nodeIds)
+  for (const node of document.nodes) {
+    if (node.groupId && nodeIds.has(node.groupId)) nodeIds.add(node.id)
+  }
   const edgeIds = new Set(selection.edgeIds)
   return {
     nodes: document.nodes.filter((node) => !nodeIds.has(node.id)),
@@ -148,6 +152,141 @@ export function duplicateSelection<NodeExtra extends Record<string, unknown>, Ed
       nodeIds: nextNodes.map((node) => node.id),
       edgeIds: nextEdges.map((edge) => edge.id),
     },
+  }
+}
+
+function selectedNodes<NodeExtra extends Record<string, unknown>, EdgeExtra extends Record<string, unknown>>(
+  document: JsonCanvasDocument<NodeExtra, EdgeExtra>,
+  selection: CanvasSelection,
+): Array<CanvasNode<NodeExtra>> {
+  return document.nodes.filter((node) => selection.nodeIds.includes(node.id))
+}
+
+function nodeBounds(nodes: Array<Pick<CanvasNode, 'x' | 'y' | 'width' | 'height'>>) {
+  const minX = Math.min(...nodes.map((node) => node.x))
+  const minY = Math.min(...nodes.map((node) => node.y))
+  const maxX = Math.max(...nodes.map((node) => node.x + node.width))
+  const maxY = Math.max(...nodes.map((node) => node.y + node.height))
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY }
+}
+
+export function groupSelection<NodeExtra extends Record<string, unknown>, EdgeExtra extends Record<string, unknown>>(
+  document: JsonCanvasDocument<NodeExtra, EdgeExtra>,
+  selection: CanvasSelection,
+): { document: JsonCanvasDocument<NodeExtra, EdgeExtra>; selection: CanvasSelection; group: CanvasNode<NodeExtra> | null } {
+  const nodes = selectedNodes(document, selection).filter((node) => node.type !== 'group')
+  if (nodes.length < 2) return { document, selection, group: null }
+  const bounds = nodeBounds(nodes)
+  const padding = 32
+  const group = createCanvasNode<NodeExtra>({
+    id: createId('group'),
+    type: 'group',
+    x: bounds.x - padding,
+    y: bounds.y - padding,
+    width: bounds.width + padding * 2,
+    height: bounds.height + padding * 2,
+    label: 'Group',
+    style: { strokeStyle: 'dashed', opacity: 0.72 },
+  } as Partial<CanvasNode<NodeExtra>>)
+  const firstSelectedIndex = document.nodes.findIndex((node) => selection.nodeIds.includes(node.id))
+  const nextNodes = document.nodes.map((node) => (
+    selection.nodeIds.includes(node.id) && node.type !== 'group'
+      ? ({ ...node, groupId: group.id } as CanvasNode<NodeExtra>)
+      : node
+  ))
+  nextNodes.splice(Math.max(firstSelectedIndex, 0), 0, group)
+  return {
+    document: { nodes: nextNodes, edges: document.edges },
+    selection: { nodeIds: [group.id], edgeIds: [] },
+    group,
+  }
+}
+
+export function ungroupSelection<NodeExtra extends Record<string, unknown>, EdgeExtra extends Record<string, unknown>>(
+  document: JsonCanvasDocument<NodeExtra, EdgeExtra>,
+  selection: CanvasSelection,
+): JsonCanvasDocument<NodeExtra, EdgeExtra> {
+  const groupIds = new Set(document.nodes.filter((node) => selection.nodeIds.includes(node.id) && node.type === 'group').map((node) => node.id))
+  if (groupIds.size === 0) return document
+  return {
+    nodes: document.nodes
+      .filter((node) => !groupIds.has(node.id))
+      .map((node) => {
+        if (!node.groupId || !groupIds.has(node.groupId)) return node
+        const next = { ...node }
+        delete next.groupId
+        return next
+      }),
+    edges: document.edges,
+  }
+}
+
+export function bringSelectionToFront<NodeExtra extends Record<string, unknown>, EdgeExtra extends Record<string, unknown>>(
+  document: JsonCanvasDocument<NodeExtra, EdgeExtra>,
+  selection: CanvasSelection,
+): JsonCanvasDocument<NodeExtra, EdgeExtra> {
+  const selected = new Set(selection.nodeIds)
+  return { ...document, nodes: [...document.nodes.filter((node) => !selected.has(node.id)), ...document.nodes.filter((node) => selected.has(node.id))] }
+}
+
+export function sendSelectionToBack<NodeExtra extends Record<string, unknown>, EdgeExtra extends Record<string, unknown>>(
+  document: JsonCanvasDocument<NodeExtra, EdgeExtra>,
+  selection: CanvasSelection,
+): JsonCanvasDocument<NodeExtra, EdgeExtra> {
+  const selected = new Set(selection.nodeIds)
+  return { ...document, nodes: [...document.nodes.filter((node) => selected.has(node.id)), ...document.nodes.filter((node) => !selected.has(node.id))] }
+}
+
+export function alignSelection<NodeExtra extends Record<string, unknown>, EdgeExtra extends Record<string, unknown>>(
+  document: JsonCanvasDocument<NodeExtra, EdgeExtra>,
+  selection: CanvasSelection,
+  alignment: CanvasAlignment,
+): JsonCanvasDocument<NodeExtra, EdgeExtra> {
+  const nodes = selectedNodes(document, selection)
+  if (nodes.length < 2) return document
+  const bounds = nodeBounds(nodes)
+  const selected = new Set(selection.nodeIds)
+  return {
+    ...document,
+    nodes: document.nodes.map((node) => {
+      if (!selected.has(node.id)) return node
+      if (alignment === 'left') return { ...node, x: bounds.x }
+      if (alignment === 'center') return { ...node, x: bounds.x + bounds.width / 2 - node.width / 2 }
+      if (alignment === 'right') return { ...node, x: bounds.x + bounds.width - node.width }
+      if (alignment === 'top') return { ...node, y: bounds.y }
+      if (alignment === 'middle') return { ...node, y: bounds.y + bounds.height / 2 - node.height / 2 }
+      return { ...node, y: bounds.y + bounds.height - node.height }
+    }),
+  }
+}
+
+export function distributeSelection<NodeExtra extends Record<string, unknown>, EdgeExtra extends Record<string, unknown>>(
+  document: JsonCanvasDocument<NodeExtra, EdgeExtra>,
+  selection: CanvasSelection,
+  distribution: CanvasDistribution,
+): JsonCanvasDocument<NodeExtra, EdgeExtra> {
+  const nodes = selectedNodes(document, selection)
+  if (nodes.length < 3) return document
+  const sorted = [...nodes].sort((a, b) => distribution === 'horizontal' ? a.x - b.x : a.y - b.y)
+  const first = sorted[0]
+  const last = sorted[sorted.length - 1]
+  if (!first || !last) return document
+  const totalSize = sorted.reduce((sum, node) => sum + (distribution === 'horizontal' ? node.width : node.height), 0)
+  const span = distribution === 'horizontal' ? last.x + last.width - first.x : last.y + last.height - first.y
+  const gap = (span - totalSize) / (sorted.length - 1)
+  const positions = new Map<string, number>()
+  let cursor = distribution === 'horizontal' ? first.x : first.y
+  for (const node of sorted) {
+    positions.set(node.id, cursor)
+    cursor += (distribution === 'horizontal' ? node.width : node.height) + gap
+  }
+  return {
+    ...document,
+    nodes: document.nodes.map((node) => {
+      const position = positions.get(node.id)
+      if (position === undefined) return node
+      return distribution === 'horizontal' ? { ...node, x: position } : { ...node, y: position }
+    }),
   }
 }
 

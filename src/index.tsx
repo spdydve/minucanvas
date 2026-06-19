@@ -1,18 +1,26 @@
 // @dpklabs/minucanvas
 // Public API — exported from here
 
+export { CanvasToolbar } from './CanvasToolbar'
+export { CanvasStyleToolbar } from './CanvasStyleToolbar'
 export { MinuCanvas } from './MinuCanvas'
 export {
   createCanvasEdge,
   createCanvasNode,
+  alignSelection,
+  bringSelectionToFront,
   createId,
   deleteSelection,
+  distributeSelection,
   duplicateSelection,
   emptyCanvas,
+  groupSelection,
   nodeLabel,
+  sendSelectionToBack,
   shapeForTool,
   snap,
   snapPoint,
+  ungroupSelection,
   updateNode,
 } from './model'
 export {
@@ -29,7 +37,9 @@ export {
 } from './geometry'
 export { defaultCanvasShortcuts, toolFromKey } from './shortcuts'
 export type {
+  CanvasAlignment,
   CanvasChangeContext,
+  CanvasDistribution,
   CanvasEdge,
   CanvasEdgeAnchor,
   CanvasEdgeRouting,
@@ -53,3 +63,5 @@ export type {
   JsonCanvasSide,
   MinuCanvasProps,
 } from './types'
+export type { CanvasToolbarProps } from './CanvasToolbar'
+export type { CanvasStyleToolbarProps } from './CanvasStyleToolbar'

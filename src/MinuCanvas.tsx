@@ -3,30 +3,42 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type CSSProperties,
   type ForwardedRef,
   type KeyboardEvent,
+  type MouseEvent,
   type PointerEvent,
   type ReactElement,
 } from 'react'
 import { anchorForEdgeAnchor, autoSidePair, canvasBounds, clientToCanvas, edgeAnchorForPoint, edgeLabelPoint, edgePath, sideFacingPoint, sideForPoint, type Point } from './geometry'
 import {
+  alignSelection as alignSelectionInDocument,
+  bringSelectionToFront,
+  cloneCanvas,
   createCanvasEdge,
   createCanvasNode,
+  createId,
   deleteSelection as deleteSelectionFromDocument,
+  distributeSelection as distributeSelectionInDocument,
   duplicateSelection,
+  groupSelection as groupSelectionInDocument,
   nodeLabel,
   normalizeSelection,
+  sendSelectionToBack,
   shapeForTool,
   snapPoint,
+  ungroupSelection as ungroupSelectionInDocument,
   updateNode,
 } from './model'
 import { isEditableTarget, toolFromKey } from './shortcuts'
 import type {
+  CanvasAlignment,
   CanvasChangeContext,
+  CanvasDistribution,
   CanvasEdge,
   CanvasEdgeAnchor,
   CanvasHandle,
@@ -76,6 +88,13 @@ type DragState<NodeExtra extends Record<string, unknown>> =
       startPoint: Point
       original: CanvasNode<NodeExtra>
     }
+  | {
+      kind: 'selection-box'
+      startPoint: Point
+      pointer: Point
+      additive: boolean
+      originalSelection: CanvasSelection
+    }
   | null
 
 const MIN_ZOOM = 0.2
@@ -87,6 +106,11 @@ const MIN_NODE_SIZE = 48
 const SHAPE_TOOLS = new Set<CanvasTool>(['text', 'rectangle', 'diamond', 'ellipse', 'pill'])
 type ResizeHandle = 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'nw'
 type AddDirection = JsonCanvasSide
+
+type CanvasClipboardPayload<NodeExtra extends Record<string, unknown>, EdgeExtra extends Record<string, unknown>> = {
+  nodes: Array<CanvasNode<NodeExtra>>
+  edges: Array<CanvasEdge<EdgeExtra>>
+}
 
 function clampZoom(zoom: number): number {
   return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom))
@@ -103,10 +127,14 @@ function nodeStyle(node: CanvasNode): CSSProperties {
     '--mc-node-stroke': style.stroke ?? node.color,
     '--mc-node-text': style.text,
     '--mc-node-stroke-width': style.strokeWidth ? `${style.strokeWidth}px` : undefined,
+    '--mc-node-stroke-style': style.strokeStyle === 'dashed' || style.strokeStyle === 'sketch' ? 'dashed' : style.strokeStyle === 'dotted' ? 'dotted' : undefined,
+    '--mc-node-stroke-dasharray': style.strokeStyle === 'dashed' || style.strokeStyle === 'sketch' ? '10 8' : style.strokeStyle === 'dotted' ? '2 8' : undefined,
     '--mc-node-radius': style.borderRadius ? `${style.borderRadius}px` : undefined,
     '--mc-node-opacity': style.opacity,
+    '--mc-node-font-family': style.fontFamily,
     '--mc-node-font-size': style.fontSize ? `${style.fontSize}px` : undefined,
     '--mc-node-font-weight': style.fontWeight,
+    '--mc-node-text-align': style.textAlign,
   } as CSSProperties
 }
 
@@ -161,6 +189,18 @@ function oppositeSide(side: JsonCanvasSide): JsonCanvasSide {
 
 function rectsOverlap(a: Pick<CanvasNode, 'x' | 'y' | 'width' | 'height'>, b: Pick<CanvasNode, 'x' | 'y' | 'width' | 'height'>): boolean {
   return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y
+}
+
+function rectFromPoints(a: Point, b: Point): Pick<CanvasNode, 'x' | 'y' | 'width' | 'height'> {
+  const x = Math.min(a.x, b.x)
+  const y = Math.min(a.y, b.y)
+  return { x, y, width: Math.abs(a.x - b.x), height: Math.abs(a.y - b.y) }
+}
+
+function rectFromLine(a: Point, b: Point, padding = 8): Pick<CanvasNode, 'x' | 'y' | 'width' | 'height'> {
+  const x = Math.min(a.x, b.x) - padding
+  const y = Math.min(a.y, b.y) - padding
+  return { x, y, width: Math.abs(a.x - b.x) + padding * 2, height: Math.abs(a.y - b.y) + padding * 2 }
 }
 
 function resizeNodeRect(node: CanvasNode, handle: ResizeHandle, dx: number, dy: number, snapToGrid: boolean, gridSize: number): Pick<CanvasNode, 'x' | 'y' | 'width' | 'height'> {
@@ -244,6 +284,7 @@ function recenterMovedNodeEdges<NodeExtra extends Record<string, unknown>, EdgeE
 
 function DefaultNodeContent({ node, editing }: { node: CanvasNode; editing: boolean }) {
   const label = nodeLabel(node)
+  if (editing) return <>{label}</>
   if (node.type === 'file') {
     return <span className="minucanvas-node__muted">📄 {label}</span>
   }
@@ -253,7 +294,7 @@ function DefaultNodeContent({ node, editing }: { node: CanvasNode; editing: bool
   if (node.type === 'group') {
     return <span className="minucanvas-node__group-label">{node.label ?? label}</span>
   }
-  return <span>{editing ? label : label}</span>
+  return <span>{label}</span>
 }
 
 function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<string, unknown>, EdgeExtra extends Record<string, unknown> = Record<string, unknown>>(
@@ -288,8 +329,14 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
   ref: ForwardedRef<CanvasHandle<NodeExtra, EdgeExtra>>,
 ) {
   const rootRef = useRef<HTMLDivElement>(null)
+  const contextMenuRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<DragState<NodeExtra>>(null)
   const addSequenceRef = useRef<{ sourceNodeId: string; direction: AddDirection; lastNodeId: string } | null>(null)
+  const clipboardRef = useRef<CanvasClipboardPayload<NodeExtra, EdgeExtra> | null>(null)
+  const undoStackRef = useRef<Array<JsonCanvasDocument<NodeExtra, EdgeExtra>>>([])
+  const redoStackRef = useRef<Array<JsonCanvasDocument<NodeExtra, EdgeExtra>>>([])
+  const undoTransactionRef = useRef<JsonCanvasDocument<NodeExtra, EdgeExtra> | null>(null)
+  const undoTransactionPushedRef = useRef(false)
   const autoFitDoneRef = useRef(false)
   const [, forcePointerFrame] = useState(0)
   const [viewport, setViewportState] = useState<CanvasViewport>(initialViewport ?? { x: 0, y: 0, zoom: 1 })
@@ -298,6 +345,9 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null)
   const [editingEdgeId, setEditingEdgeId] = useState<string | null>(null)
   const [pendingConnectorAnchor, setPendingConnectorAnchor] = useState<ConnectorAnchor | null>(null)
+  const [panningModifierActive, setPanningModifierActive] = useState(false)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null)
   const activeTool = tool ?? localTool
   const selection = normalizeSelection({
     nodeIds: selectedNodeIds ?? localSelection.nodeIds,
@@ -333,9 +383,20 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
 
   const emitChange = useCallback(
     (nextValue: JsonCanvasDocument<NodeExtra, EdgeExtra>, reason: CanvasChangeContext['reason']) => {
+      const transactionSnapshot = undoTransactionRef.current
+      if (transactionSnapshot) {
+        if (!undoTransactionPushedRef.current) {
+          undoStackRef.current = [...undoStackRef.current.slice(-99), cloneCanvas(transactionSnapshot)]
+          redoStackRef.current = []
+          undoTransactionPushedRef.current = true
+        }
+      } else {
+        undoStackRef.current = [...undoStackRef.current.slice(-99), cloneCanvas(value)]
+        redoStackRef.current = []
+      }
       onChange(nextValue, { reason })
     },
-    [onChange],
+    [onChange, value],
   )
 
   const createNodeAt = useCallback(
@@ -378,6 +439,14 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
     emitSelection(result.selection)
   }, [emitChange, emitSelection, readOnly, selection, value])
 
+  const expandNodeIdsForGroups = useCallback((nodeIds: readonly string[]): string[] => {
+    const expanded = new Set(nodeIds)
+    for (const node of value.nodes) {
+      if (node.groupId && expanded.has(node.groupId)) expanded.add(node.id)
+    }
+    return [...expanded]
+  }, [value.nodes])
+
   const createEdgeBetween = useCallback(
     (fromNodeId: string, toNodeId: string, partial: Partial<CanvasEdge<EdgeExtra>> = {}) => {
       if (readOnly || fromNodeId === toNodeId) return null
@@ -409,6 +478,22 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
 
     return null
   }, [nodeById, selection.edgeIds, selection.nodeIds, value.edges])
+
+  const moveSelectedNodesByKeyboard = useCallback(
+    (direction: AddDirection) => {
+      if (readOnly || selection.nodeIds.length === 0) return false
+      const amount = snapToGrid ? gridSize : 10
+      const dx = direction === 'left' ? -amount : direction === 'right' ? amount : 0
+      const dy = direction === 'top' ? -amount : direction === 'bottom' ? amount : 0
+      const movedNodeIds = expandNodeIdsForGroups(selection.nodeIds)
+      const moved = movedNodeIds.reduce<JsonCanvasDocument<NodeExtra, EdgeExtra>>((document, nodeId) => (
+        updateNode(document, nodeId, (node) => ({ ...node, x: node.x + dx, y: node.y + dy }))
+      ), value)
+      emitChange(recenterMovedNodeEdges(moved, movedNodeIds), 'move-node')
+      return true
+    },
+    [emitChange, expandNodeIdsForGroups, gridSize, readOnly, selection.nodeIds, snapToGrid, value],
+  )
 
   const navigateSelection = useCallback(
     (direction: AddDirection) => {
@@ -608,6 +693,41 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
     [emitChange, value],
   )
 
+  const groupCurrentSelection = useCallback(() => {
+    if (readOnly) return null
+    const result = groupSelectionInDocument(value, selection)
+    if (!result.group) return null
+    emitChange(result.document, 'update-node')
+    emitSelection(result.selection)
+    return result.group
+  }, [emitChange, emitSelection, readOnly, selection, value])
+
+  const ungroupCurrentSelection = useCallback(() => {
+    if (readOnly) return
+    emitChange(ungroupSelectionInDocument(value, selection), 'update-node')
+    emitSelection({ nodeIds: [], edgeIds: [] })
+  }, [emitChange, emitSelection, readOnly, selection, value])
+
+  const bringCurrentSelectionToFront = useCallback(() => {
+    if (readOnly || selection.nodeIds.length === 0) return
+    emitChange(bringSelectionToFront(value, selection), 'update-node')
+  }, [emitChange, readOnly, selection, value])
+
+  const sendCurrentSelectionToBack = useCallback(() => {
+    if (readOnly || selection.nodeIds.length === 0) return
+    emitChange(sendSelectionToBack(value, selection), 'update-node')
+  }, [emitChange, readOnly, selection, value])
+
+  const alignCurrentSelection = useCallback((alignment: CanvasAlignment) => {
+    if (readOnly || selection.nodeIds.length < 2) return
+    emitChange(recenterMovedNodeEdges(alignSelectionInDocument(value, selection, alignment), selection.nodeIds), 'move-node')
+  }, [emitChange, readOnly, selection, value])
+
+  const distributeCurrentSelection = useCallback((distribution: CanvasDistribution) => {
+    if (readOnly || selection.nodeIds.length < 3) return
+    emitChange(recenterMovedNodeEdges(distributeSelectionInDocument(value, selection, distribution), selection.nodeIds), 'move-node')
+  }, [emitChange, readOnly, selection, value])
+
   const zoomBy = useCallback((delta: number) => {
     setViewport({ ...viewport, zoom: viewport.zoom + delta })
   }, [setViewport, viewport])
@@ -642,15 +762,36 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
       return node
     },
     createEdge: createEdgeBetween,
+    groupSelection: groupCurrentSelection,
+    ungroupSelection: ungroupCurrentSelection,
+    bringSelectionToFront: bringCurrentSelectionToFront,
+    sendSelectionToBack: sendCurrentSelectionToBack,
+    alignSelection: alignCurrentSelection,
+    distributeSelection: distributeCurrentSelection,
     zoomIn: () => zoomBy(ZOOM_STEP),
     zoomOut: () => zoomBy(-ZOOM_STEP),
     resetView,
     fitView,
-  }), [createEdgeBetween, deleteCurrentSelection, emitChange, emitSelection, fitView, resetView, selection, setActiveTool, value, zoomBy])
+  }), [alignCurrentSelection, bringCurrentSelectionToFront, createEdgeBetween, deleteCurrentSelection, distributeCurrentSelection, emitChange, emitSelection, fitView, groupCurrentSelection, resetView, selection, sendCurrentSelectionToBack, setActiveTool, ungroupCurrentSelection, value, zoomBy])
 
   useEffect(() => {
     if (autoFocus) rootRef.current?.focus()
   }, [autoFocus])
+
+  useLayoutEffect(() => {
+    if (!contextMenu) return
+    const root = rootRef.current
+    const menu = contextMenuRef.current
+    if (!root || !menu) return
+    const padding = 8
+    const nextX = Math.min(contextMenu.x, root.clientWidth - menu.offsetWidth - padding)
+    const nextY = Math.min(contextMenu.y, root.clientHeight - menu.offsetHeight - padding)
+    const clamped = {
+      x: Math.max(padding, nextX),
+      y: Math.max(padding, nextY),
+    }
+    if (clamped.x !== contextMenu.x || clamped.y !== contextMenu.y) setContextMenu(clamped)
+  }, [contextMenu])
 
   useEffect(() => {
     if (!isConnectorTool(activeTool)) setPendingConnectorAnchor(null)
@@ -671,7 +812,30 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
   const handleNodePointerDown = useCallback((event: PointerEvent<HTMLDivElement>, node: CanvasNode<NodeExtra>) => {
     if (readOnly) return
     event.stopPropagation()
+    setContextMenu(null)
     rootRef.current?.focus()
+    const interactionNode = activeTool === 'select' && node.groupId && activeGroupId !== node.groupId
+      ? nodeById.get(node.groupId) ?? node
+      : node
+
+    if (activeTool === 'select' && event.shiftKey) {
+      const nextNodeIds = selection.nodeIds.includes(interactionNode.id)
+        ? selection.nodeIds.filter((id) => id !== interactionNode.id)
+        : [...selection.nodeIds, interactionNode.id]
+      emitSelection({ nodeIds: nextNodeIds, edgeIds: [] })
+      return
+    }
+
+    if (event.shiftKey || panningModifierActive) {
+      event.currentTarget.setPointerCapture(event.pointerId)
+      dragRef.current = {
+        kind: 'pan',
+        startClient: { x: event.clientX, y: event.clientY },
+        startViewport: viewport,
+      }
+      return
+    }
+
     if (isConnectorTool(activeTool)) {
       const point = pointFromEvent(event)
       const hit = connectorAnchorAtPoint(point)
@@ -699,32 +863,37 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
     const additive = event.shiftKey || event.metaKey || event.ctrlKey
     const nextNodeIds = additive
       ? selection.nodeIds.includes(node.id)
-        ? selection.nodeIds.filter((id) => id !== node.id)
-        : [...selection.nodeIds, node.id]
-      : selection.nodeIds.includes(node.id)
+        ? selection.nodeIds.filter((id) => id !== interactionNode.id)
+        : [...selection.nodeIds, interactionNode.id]
+      : selection.nodeIds.includes(interactionNode.id)
         ? selection.nodeIds
-        : [node.id]
+        : [interactionNode.id]
     const nextSelection = { nodeIds: nextNodeIds, edgeIds: [] }
     emitSelection(nextSelection)
 
+    const dragNodeIds = expandNodeIdsForGroups(nextSelection.nodeIds)
     const originals = new Map<string, CanvasNode<NodeExtra>>()
-    for (const id of nextSelection.nodeIds) {
+    for (const id of dragNodeIds) {
       const selectedNode = nodeById.get(id)
       if (selectedNode) originals.set(id, selectedNode)
     }
     event.currentTarget.setPointerCapture(event.pointerId)
+    undoTransactionRef.current = cloneCanvas(value)
+    undoTransactionPushedRef.current = false
     dragRef.current = {
       kind: 'nodes',
       startPoint: pointFromEvent(event),
-      nodeIds: nextSelection.nodeIds,
+      nodeIds: dragNodeIds,
       originals,
     }
-  }, [activeTool, connectorAnchorAtPoint, createEdgeBetween, emitSelection, nodeById, pendingConnectorAnchor, pointFromEvent, readOnly, selection.nodeIds])
+  }, [activeGroupId, activeTool, connectorAnchorAtPoint, createEdgeBetween, emitSelection, expandNodeIdsForGroups, nodeById, pendingConnectorAnchor, panningModifierActive, pointFromEvent, readOnly, selection.nodeIds, viewport])
 
   const handleSurfacePointerDown = useCallback((event: PointerEvent<HTMLDivElement>) => {
+    setContextMenu(null)
+    setActiveGroupId(null)
     rootRef.current?.focus()
     setEditingEdgeId(null)
-    if (event.button === 1 || activeTool === 'hand' || event.altKey) {
+    if (event.button === 1 || activeTool === 'hand' || event.altKey || event.shiftKey || panningModifierActive) {
       event.currentTarget.setPointerCapture(event.pointerId)
       dragRef.current = {
         kind: 'pan',
@@ -764,8 +933,24 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
       setPendingConnectorAnchor(null)
     }
 
+    if (activeTool === 'select') {
+      const point = pointFromEvent(event)
+      const additive = event.shiftKey || event.metaKey || event.ctrlKey
+      event.currentTarget.setPointerCapture(event.pointerId)
+      dragRef.current = {
+        kind: 'selection-box',
+        startPoint: point,
+        pointer: point,
+        additive,
+        originalSelection: selection,
+      }
+      if (!additive) emitSelection({ nodeIds: [], edgeIds: [] })
+      forcePointerFrame((frame) => frame + 1)
+      return
+    }
+
     emitSelection({ nodeIds: [], edgeIds: [] })
-  }, [activeTool, connectorAnchorAtPoint, createEdgeBetween, createNodeAt, emitSelection, pendingConnectorAnchor, pointFromEvent, readOnly, viewport])
+  }, [activeTool, connectorAnchorAtPoint, createEdgeBetween, createNodeAt, emitSelection, pendingConnectorAnchor, panningModifierActive, pointFromEvent, readOnly, selection, viewport])
 
   const handlePointerMove = useCallback((event: PointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current
@@ -796,6 +981,41 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
       return
     }
 
+    if (drag.kind === 'selection-box') {
+      const nextDrag = { ...drag, pointer: point }
+      dragRef.current = nextDrag
+      const box = rectFromPoints(nextDrag.startPoint, nextDrag.pointer)
+      const boxNodeIds = [...new Set(value.nodes
+        .filter((node) => rectsOverlap(box, node))
+        .flatMap((node) => {
+          if (activeGroupId) {
+            if (node.groupId === activeGroupId) return [node.id]
+            return []
+          }
+          return [node.groupId ?? node.id]
+        }))]
+      const boxEdgeIds = value.edges.filter((edge) => {
+        const fromNode = nodeById.get(edge.fromNode)
+        const toNode = nodeById.get(edge.toNode)
+        if (!fromNode || !toNode) return false
+        const fromPoint = anchorForEdgeAnchor(fromNode, edge.fromAnchor ?? {
+          side: edge.fromSide ?? sideForPoint(fromNode, { x: toNode.x + toNode.width / 2, y: toNode.y + toNode.height / 2 }),
+          position: 0.5,
+        })
+        const toPoint = anchorForEdgeAnchor(toNode, edge.toAnchor ?? {
+          side: edge.toSide ?? sideForPoint(toNode, { x: fromNode.x + fromNode.width / 2, y: fromNode.y + fromNode.height / 2 }),
+          position: 0.5,
+        })
+        return rectsOverlap(box, rectFromLine(fromPoint, toPoint, 10))
+      }).map((edge) => edge.id)
+      emitSelection({
+        nodeIds: nextDrag.additive ? [...new Set([...nextDrag.originalSelection.nodeIds, ...boxNodeIds])] : boxNodeIds,
+        edgeIds: nextDrag.additive ? [...new Set([...nextDrag.originalSelection.edgeIds, ...boxEdgeIds])] : boxEdgeIds,
+      })
+      forcePointerFrame((frame) => frame + 1)
+      return
+    }
+
     if (drag.kind === 'resize-node') {
       const dx = point.x - drag.startPoint.x
       const dy = point.y - drag.startPoint.y
@@ -821,13 +1041,20 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
       return updateNode(document, nodeId, (node) => ({ ...node, x: nextPosition.x, y: nextPosition.y }))
     }, value)
     emitChange(recenterMovedNodeEdges(moved, drag.nodeIds), 'move-node')
-  }, [connectorAnchorAtPoint, emitChange, gridSize, pointFromEvent, setViewport, snapToGrid, updateEdgeAnchor, value])
+  }, [activeGroupId, connectorAnchorAtPoint, emitChange, gridSize, nodeById, pointFromEvent, setViewport, snapToGrid, updateEdgeAnchor, value])
 
   const handlePointerUp = useCallback((event: PointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current
     dragRef.current = null
+    undoTransactionRef.current = null
+    undoTransactionPushedRef.current = false
     forcePointerFrame((frame) => frame + 1)
     if (!drag) return
+    if (drag.kind === 'selection-box') {
+      const box = rectFromPoints(drag.startPoint, drag.pointer)
+      if (box.width < 3 && box.height < 3 && !drag.additive) emitSelection({ nodeIds: [], edgeIds: [] })
+      return
+    }
     if (drag.kind === 'edge-anchor') return
     if (drag.kind !== 'connector') return
     const targetPoint = pointFromEvent(event)
@@ -845,14 +1072,97 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
     setPendingConnectorAnchor({ nodeId: drag.fromNodeId, ...drag.fromAnchor, toEnd: drag.toEnd })
   }, [connectorAnchorAtPoint, createEdgeBetween, pointFromEvent])
 
-  const handleWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
-    if (!event.ctrlKey && !event.metaKey) return
+  const undo = useCallback(() => {
+    const previous = undoStackRef.current.pop()
+    if (!previous) return false
+    redoStackRef.current = [...redoStackRef.current.slice(-99), cloneCanvas(value)]
+    onChange(previous, { reason: 'programmatic' })
+    emitSelection({ nodeIds: [], edgeIds: [] })
+    return true
+  }, [emitSelection, onChange, value])
+
+  const redo = useCallback(() => {
+    const next = redoStackRef.current.pop()
+    if (!next) return false
+    undoStackRef.current = [...undoStackRef.current.slice(-99), cloneCanvas(value)]
+    onChange(next, { reason: 'programmatic' })
+    emitSelection({ nodeIds: [], edgeIds: [] })
+    return true
+  }, [emitSelection, onChange, value])
+
+  const copyCurrentSelection = useCallback(() => {
+    const copiedNodeIds = new Set(selection.nodeIds)
+    for (const edge of value.edges) {
+      if (selection.edgeIds.includes(edge.id)) {
+        copiedNodeIds.add(edge.fromNode)
+        copiedNodeIds.add(edge.toNode)
+      }
+    }
+
+    const nodes = value.nodes
+      .filter((node) => copiedNodeIds.has(node.id))
+      .map((node) => ({ ...node, style: node.style ? { ...node.style } : undefined })) as Array<CanvasNode<NodeExtra>>
+    const nodeIds = new Set(nodes.map((node) => node.id))
+    const edges = value.edges
+      .filter((edge) => (selection.edgeIds.includes(edge.id) || (selection.nodeIds.includes(edge.fromNode) && selection.nodeIds.includes(edge.toNode))) && nodeIds.has(edge.fromNode) && nodeIds.has(edge.toNode))
+      .map((edge) => ({ ...edge, style: edge.style ? { ...edge.style } : undefined })) as Array<CanvasEdge<EdgeExtra>>
+
+    if (nodes.length === 0 && edges.length === 0) return false
+    const payload = { nodes, edges }
+    clipboardRef.current = payload
+    navigator.clipboard?.writeText(JSON.stringify({ type: 'application/x-minucanvas-selection', ...payload })).catch(() => undefined)
+    return true
+  }, [selection.edgeIds, selection.nodeIds, value.edges, value.nodes])
+
+  const pasteClipboard = useCallback(() => {
+    const payload = clipboardRef.current
+    if (!payload || payload.nodes.length === 0) return false
+
+    const idMap = new Map<string, string>()
+    const nextNodes = payload.nodes.map((node) => {
+      const id = createId('node')
+      idMap.set(node.id, id)
+      return {
+        ...node,
+        id,
+        x: node.x + 40,
+        y: node.y + 40,
+        style: node.style ? { ...node.style } : undefined,
+      } as CanvasNode<NodeExtra>
+    })
+    const nextEdges = payload.edges
+      .filter((edge) => idMap.has(edge.fromNode) && idMap.has(edge.toNode))
+      .map((edge) => ({
+        ...edge,
+        id: createId('edge'),
+        fromNode: idMap.get(edge.fromNode) ?? edge.fromNode,
+        toNode: idMap.get(edge.toNode) ?? edge.toNode,
+        style: edge.style ? { ...edge.style } : undefined,
+      })) as Array<CanvasEdge<EdgeExtra>>
+
+    emitChange({ nodes: [...value.nodes, ...nextNodes], edges: [...value.edges, ...nextEdges] }, 'paste')
+    emitSelection({ nodeIds: nextNodes.map((node) => node.id), edgeIds: nextEdges.map((edge) => edge.id) })
+    return true
+  }, [emitChange, emitSelection, value.edges, value.nodes])
+
+  const handleWheel = useCallback((event: WheelEvent) => {
     event.preventDefault()
+
+    if (!event.ctrlKey && !event.metaKey) {
+      setViewport({
+        ...viewport,
+        x: viewport.x - event.deltaX,
+        y: viewport.y - event.deltaY,
+      })
+      return
+    }
+
     const root = rootRef.current
     if (!root) return
     const rect = root.getBoundingClientRect()
     const before = clientToCanvas({ x: event.clientX, y: event.clientY }, rect, viewport)
-    const nextZoom = clampZoom(viewport.zoom * (event.deltaY < 0 ? 1.08 : 0.92))
+    const zoomFactor = Math.exp(-event.deltaY * 0.05)
+    const nextZoom = clampZoom(viewport.zoom * zoomFactor)
     setViewport({
       zoom: nextZoom,
       x: event.clientX - rect.left - before.x * nextZoom,
@@ -860,10 +1170,65 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
     })
   }, [setViewport, viewport])
 
+  useEffect(() => {
+    const root = rootRef.current
+    if (!root) return
+    root.addEventListener('wheel', handleWheel, { passive: false })
+    return () => root.removeEventListener('wheel', handleWheel)
+  }, [handleWheel])
+
   const handleKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
     if (!shortcuts || isEditableTarget(event.target)) return
+    if (event.key === 'Shift' || event.key === ' ') {
+      if (event.key === ' ') event.preventDefault()
+      setPanningModifierActive(true)
+      return
+    }
     const mod = event.metaKey || event.ctrlKey
+    if (mod && event.key.toLowerCase() === 'z' && !event.shiftKey) {
+      event.preventDefault()
+      undo()
+      return
+    }
+    if ((mod && event.key.toLowerCase() === 'z' && event.shiftKey) || (mod && event.key.toLowerCase() === 'y')) {
+      event.preventDefault()
+      redo()
+      return
+    }
+    if (mod && event.key.toLowerCase() === 'c') {
+      event.preventDefault()
+      copyCurrentSelection()
+      return
+    }
+    if (mod && event.key.toLowerCase() === 'x' && !readOnly) {
+      event.preventDefault()
+      if (copyCurrentSelection()) deleteCurrentSelection()
+      return
+    }
+    if (mod && event.key.toLowerCase() === 'v' && !readOnly) {
+      event.preventDefault()
+      pasteClipboard()
+      return
+    }
+    if (mod && event.key.toLowerCase() === 'g' && !readOnly) {
+      event.preventDefault()
+      if (event.shiftKey) ungroupCurrentSelection()
+      else groupCurrentSelection()
+      return
+    }
+    if (mod && event.key === ']' && !readOnly) {
+      event.preventDefault()
+      bringCurrentSelectionToFront()
+      return
+    }
+    if (mod && event.key === '[' && !readOnly) {
+      event.preventDefault()
+      sendCurrentSelectionToBack()
+      return
+    }
     if (event.key === 'Escape') {
+      setContextMenu(null)
+      setActiveGroupId(null)
       setEditingNodeId(null)
       setEditingEdgeId(null)
       setPendingConnectorAnchor(null)
@@ -903,6 +1268,10 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
             : event.key === 'ArrowLeft'
               ? 'left'
               : null
+      if (direction && selection.nodeIds.length > 0 && moveSelectedNodesByKeyboard(direction)) {
+        event.preventDefault()
+        return
+      }
       if (direction && navigateSelection(direction)) {
         event.preventDefault()
         return
@@ -958,7 +1327,32 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
       event.preventDefault()
       setActiveTool(nextTool)
     }
-  }, [createConnectedNode, cycleSelection, deleteCurrentSelection, duplicateCurrentSelection, emitSelection, navigateSelection, nodeById, readOnly, resetView, selection.edgeIds, selection.nodeIds, setActiveTool, shortcuts, zoomBy])
+  }, [bringCurrentSelectionToFront, copyCurrentSelection, createConnectedNode, cycleSelection, deleteCurrentSelection, duplicateCurrentSelection, emitSelection, groupCurrentSelection, moveSelectedNodesByKeyboard, navigateSelection, nodeById, pasteClipboard, readOnly, redo, resetView, selection.edgeIds, selection.nodeIds, sendCurrentSelectionToBack, setActiveTool, shortcuts, undo, ungroupCurrentSelection, zoomBy])
+
+  const handleKeyUp = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Shift' || event.key === ' ') setPanningModifierActive(false)
+  }, [])
+
+  const closeContextMenu = useCallback(() => setContextMenu(null), [])
+
+  const handleContextMenu = useCallback((event: MouseEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    rootRef.current?.focus()
+    const target = event.target instanceof HTMLElement ? event.target : null
+    const nodeElement = target?.closest<HTMLElement>('[data-minucanvas-node-id]')
+    const edgeElement = target?.closest<HTMLElement>('[data-minucanvas-edge-id]')
+    const rawNodeId = nodeElement?.dataset.minucanvasNodeId
+    const rawNode = rawNodeId ? nodeById.get(rawNodeId) : null
+    const nodeId = rawNode?.groupId && activeGroupId !== rawNode.groupId ? rawNode.groupId : rawNodeId
+    const edgeId = edgeElement?.dataset.minucanvasEdgeId
+    if (nodeId && !selection.nodeIds.includes(nodeId)) emitSelection({ nodeIds: [nodeId], edgeIds: [] })
+    else if (edgeId && !selection.edgeIds.includes(edgeId)) emitSelection({ nodeIds: [], edgeIds: [edgeId] })
+    const rect = rootRef.current?.getBoundingClientRect()
+    setContextMenu({
+      x: rect ? event.clientX - rect.left : event.clientX,
+      y: rect ? event.clientY - rect.top : event.clientY,
+    })
+  }, [activeGroupId, emitSelection, nodeById, selection.edgeIds, selection.nodeIds])
 
   const handleNodeTextBlur = useCallback((node: CanvasNode<NodeExtra>, text: string) => {
     setEditingNodeId(null)
@@ -975,13 +1369,16 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
   }, [emitChange, readOnly, value])
 
   const connectorPreview = dragRef.current?.kind === 'connector' ? dragRef.current : null
+  const selectionBox = dragRef.current?.kind === 'selection-box' ? rectFromPoints(dragRef.current.startPoint, dragRef.current.pointer) : null
   const worldStyle: CSSProperties = {
     transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`,
   }
   const rootStyle: CSSProperties = {
     minHeight: typeof minHeight === 'number' ? `${minHeight}px` : minHeight,
     maxHeight: typeof maxHeight === 'number' ? `${maxHeight}px` : maxHeight,
-    '--mc-grid-size': `${gridSize}px`,
+    '--mc-grid-size': `${gridSize * viewport.zoom}px`,
+    '--mc-grid-offset-x': `${viewport.x}px`,
+    '--mc-grid-offset-y': `${viewport.y}px`,
   } as CSSProperties
   const activeCanvasTheme = canvasTheme ?? theme
   const themeClass = activeCanvasTheme === 'system' ? '' : ` minucanvas--theme-${activeCanvasTheme}`
@@ -992,18 +1389,22 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
       ref={rootRef}
       className={`minucanvas${grid ? ' minucanvas--grid' : ''}${readOnly ? ' minucanvas--readonly' : ''}${themeClass}${shapeThemeClass}${className ? ` ${className}` : ''}`}
       data-tool={activeTool}
+      data-panning={activeTool === 'hand' || panningModifierActive ? 'true' : undefined}
       data-minucanvas
       onKeyDown={handleKeyDown}
+      onKeyUp={handleKeyUp}
+      onContextMenu={handleContextMenu}
+      onBlur={() => setPanningModifierActive(false)}
       onPointerDown={handleSurfacePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
-      onWheel={handleWheel}
       role="application"
       aria-label="Canvas editor"
       tabIndex={0}
       style={rootStyle}
     >
       <div className="minucanvas-world" style={worldStyle}>
+        {selectionBox ? <div className="minucanvas-selection-box" style={{ left: selectionBox.x, top: selectionBox.y, width: selectionBox.width, height: selectionBox.height }} /> : null}
         <svg className="minucanvas-edges" aria-hidden="true">
           <defs>
             <marker id="minucanvas-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
@@ -1022,10 +1423,19 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
                 {strokeStyle === 'sketch' ? <path className="minucanvas-edge__sketch-shadow" d={path} /> : null}
                 <path
                   className="minucanvas-edge__hit-area"
+                  data-minucanvas-edge-id={edge.id}
                   d={path}
                   onPointerDown={(event) => {
                     event.stopPropagation()
-                    emitSelection({ nodeIds: [], edgeIds: [edge.id] })
+                    const additive = event.shiftKey || event.metaKey || event.ctrlKey
+                    emitSelection(additive
+                      ? {
+                          nodeIds: selection.nodeIds,
+                          edgeIds: selection.edgeIds.includes(edge.id)
+                            ? selection.edgeIds.filter((id) => id !== edge.id)
+                            : [...selection.edgeIds, edge.id],
+                        }
+                      : { nodeIds: [], edgeIds: [edge.id] })
                   }}
                   onDoubleClick={(event) => {
                     event.stopPropagation()
@@ -1080,6 +1490,8 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
                     event.stopPropagation()
                     event.currentTarget.setPointerCapture(event.pointerId)
                     emitSelection({ nodeIds: [], edgeIds: [edge.id] })
+                    undoTransactionRef.current = cloneCanvas(value)
+                    undoTransactionPushedRef.current = false
                     dragRef.current = { kind: 'edge-anchor', edgeId: edge.id, endpoint: 'from' }
                   }}
                 />
@@ -1092,6 +1504,8 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
                     event.stopPropagation()
                     event.currentTarget.setPointerCapture(event.pointerId)
                     emitSelection({ nodeIds: [], edgeIds: [edge.id] })
+                    undoTransactionRef.current = cloneCanvas(value)
+                    undoTransactionPushedRef.current = false
                     dragRef.current = { kind: 'edge-anchor', edgeId: edge.id, endpoint: 'to' }
                   }}
                 />
@@ -1162,13 +1576,24 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
           return (
             <div
               key={node.id}
-              className={`minucanvas-node minucanvas-node--type-${node.type} ${nodeShapeClass(node)}${selected ? ' minucanvas-node--selected' : ''}${editing ? ' minucanvas-node--editing' : ''}${pendingConnector ? ' minucanvas-node--connector-source' : ''}`}
+              className={`minucanvas-node minucanvas-node--type-${node.type} ${nodeShapeClass(node)}${selected ? ' minucanvas-node--selected' : ''}${editing ? ' minucanvas-node--editing' : ''}${pendingConnector ? ' minucanvas-node--connector-source' : ''}${activeGroupId === node.id ? ' minucanvas-node--active-group' : ''}${node.groupId && activeGroupId !== node.groupId ? ' minucanvas-node--group-child-locked' : ''}`}
               data-minucanvas-node-id={node.id}
               style={nodeStyle(node)}
               onPointerDown={(event) => handleNodePointerDown(event, node)}
               onDoubleClick={(event) => {
                 event.stopPropagation()
-                if (!readOnly) setEditingNodeId(node.id)
+                if (readOnly) return
+                if (node.type === 'group') {
+                  setActiveGroupId(node.id)
+                  emitSelection({ nodeIds: [], edgeIds: [] })
+                  return
+                }
+                if (node.groupId && activeGroupId !== node.groupId) {
+                  setActiveGroupId(node.groupId)
+                  emitSelection({ nodeIds: [node.id], edgeIds: [] })
+                  return
+                }
+                setEditingNodeId(node.id)
               }}
             >
               {polygonPath ? (
@@ -1177,14 +1602,27 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
                 </svg>
               ) : null}
               <div
+                key={editing ? `${node.id}-editing` : `${node.id}-viewing`}
                 className="minucanvas-node__content"
                 contentEditable={editing && !readOnly}
                 suppressContentEditableWarning
+                ref={(element) => {
+                  if (!element || !editing || readOnly) return
+                  requestAnimationFrame(() => {
+                    element.focus()
+                    const range = document.createRange()
+                    range.selectNodeContents(element)
+                    const selectedRange = window.getSelection()
+                    selectedRange?.removeAllRanges()
+                    selectedRange?.addRange(range)
+                  })
+                }}
                 onKeyDown={(event) => {
                   event.stopPropagation()
                   if (event.key === 'Escape') {
                     event.preventDefault()
                     setEditingNodeId(null)
+                    rootRef.current?.focus()
                   }
                   if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
                     event.preventDefault()
@@ -1193,7 +1631,7 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
                 }}
                 onBlur={(event) => handleNodeTextBlur(node, event.currentTarget.textContent ?? '')}
               >
-                {renderNode?.({ node, selected, editing }) ?? <DefaultNodeContent node={node} editing={editing} />}
+                {editing ? <DefaultNodeContent node={node} editing={editing} /> : renderNode?.({ node, selected, editing }) ?? <DefaultNodeContent node={node} editing={editing} />}
               </div>
             </div>
           )
@@ -1202,11 +1640,14 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
         <svg className="minucanvas-overlays" aria-hidden="true">
           {value.nodes.map((node) => {
             if (!selection.nodeIds.includes(node.id) || readOnly) return null
+            const addHandleOffset = 28 / viewport.zoom
+            const resizeHandleSize = 10 / viewport.zoom
+            const resizeHandleRadius = 2 / viewport.zoom
             const addHandles: Array<{ direction: AddDirection; x: number; y: number; label: string; hintX: number; hintAnchor: 'start' | 'end' }> = [
-              { direction: 'top', x: node.x + node.width / 2, y: node.y - 28, label: '⌘↑', hintX: 16, hintAnchor: 'start' },
-              { direction: 'right', x: node.x + node.width + 28, y: node.y + node.height / 2, label: '⌘→', hintX: 16, hintAnchor: 'start' },
-              { direction: 'bottom', x: node.x + node.width / 2, y: node.y + node.height + 28, label: '⌘↓', hintX: 16, hintAnchor: 'start' },
-              { direction: 'left', x: node.x - 28, y: node.y + node.height / 2, label: '⌘←', hintX: -16, hintAnchor: 'end' },
+              { direction: 'top', x: node.x + node.width / 2, y: node.y - addHandleOffset, label: '⌘↑', hintX: 16, hintAnchor: 'start' },
+              { direction: 'right', x: node.x + node.width + addHandleOffset, y: node.y + node.height / 2, label: '⌘→', hintX: 16, hintAnchor: 'start' },
+              { direction: 'bottom', x: node.x + node.width / 2, y: node.y + node.height + addHandleOffset, label: '⌘↓', hintX: 16, hintAnchor: 'start' },
+              { direction: 'left', x: node.x - addHandleOffset, y: node.y + node.height / 2, label: '⌘←', hintX: -16, hintAnchor: 'end' },
             ]
             const handles: Array<{ id: ResizeHandle; x: number; y: number }> = [
               { id: 'nw', x: node.x, y: node.y },
@@ -1225,7 +1666,7 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
                     <g
                       key={handle.direction}
                       className={`minucanvas-add-handle minucanvas-add-handle--${handle.direction}`}
-                      transform={`translate(${handle.x} ${handle.y})`}
+                      transform={`translate(${handle.x} ${handle.y}) scale(${1 / viewport.zoom})`}
                       onPointerDown={(event) => {
                         event.stopPropagation()
                         createConnectedNode(node, handle.direction)
@@ -1242,15 +1683,17 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
                   <rect
                     key={handle.id}
                     className={`minucanvas-resize-handle minucanvas-resize-handle--${handle.id}`}
-                    x={handle.x - 5}
-                    y={handle.y - 5}
-                    width={10}
-                    height={10}
-                    rx={2}
+                    x={handle.x - resizeHandleSize / 2}
+                    y={handle.y - resizeHandleSize / 2}
+                    width={resizeHandleSize}
+                    height={resizeHandleSize}
+                    rx={resizeHandleRadius}
                     onPointerDown={(event) => {
                       event.stopPropagation()
                       event.currentTarget.setPointerCapture(event.pointerId)
                       emitSelection({ nodeIds: [node.id], edgeIds: [] })
+                      undoTransactionRef.current = cloneCanvas(value)
+                      undoTransactionPushedRef.current = false
                       dragRef.current = {
                         kind: 'resize-node',
                         nodeId: node.id,
@@ -1291,6 +1734,8 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
                     event.stopPropagation()
                     event.currentTarget.setPointerCapture(event.pointerId)
                     emitSelection({ nodeIds: [], edgeIds: [edge.id] })
+                    undoTransactionRef.current = cloneCanvas(value)
+                    undoTransactionPushedRef.current = false
                     dragRef.current = { kind: 'edge-anchor', edgeId: edge.id, endpoint: 'from' }
                   }}
                 />
@@ -1303,6 +1748,8 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
                     event.stopPropagation()
                     event.currentTarget.setPointerCapture(event.pointerId)
                     emitSelection({ nodeIds: [], edgeIds: [edge.id] })
+                    undoTransactionRef.current = cloneCanvas(value)
+                    undoTransactionPushedRef.current = false
                     dragRef.current = { kind: 'edge-anchor', edgeId: edge.id, endpoint: 'to' }
                   }}
                 />
@@ -1311,6 +1758,50 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
           })}
         </svg>
       </div>
+      {contextMenu ? (
+        <div
+          ref={contextMenuRef}
+          className="minucanvas-context-menu"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          role="menu"
+          onPointerDown={(event) => event.stopPropagation()}
+          onContextMenu={(event) => event.preventDefault()}
+        >
+          <button type="button" onClick={() => { copyCurrentSelection(); deleteCurrentSelection(); closeContextMenu() }} disabled={readOnly || (selection.nodeIds.length === 0 && selection.edgeIds.length === 0)}><span>Cut</span><kbd>⌘ X</kbd></button>
+          <button type="button" onClick={() => { copyCurrentSelection(); closeContextMenu() }} disabled={selection.nodeIds.length === 0 && selection.edgeIds.length === 0}><span>Copy</span><kbd>⌘ C</kbd></button>
+          <button type="button" onClick={() => { pasteClipboard(); closeContextMenu() }} disabled={readOnly}><span>Paste</span><kbd>⌘ V</kbd></button>
+          <button type="button" onClick={() => { duplicateCurrentSelection(); closeContextMenu() }} disabled={readOnly || selection.nodeIds.length === 0}><span>Duplicate</span><kbd>⌘ D</kbd></button>
+          <button type="button" onClick={() => { emitSelection({ nodeIds: value.nodes.map((node) => node.id), edgeIds: value.edges.map((edge) => edge.id) }); closeContextMenu() }}><span>Select all</span><kbd>⌘ A</kbd></button>
+          <div className="minucanvas-context-menu__separator" />
+          <button type="button" onClick={() => { groupCurrentSelection(); closeContextMenu() }} disabled={readOnly || selection.nodeIds.length < 2}><span>Group selection</span><kbd>⌘ G</kbd></button>
+          <button type="button" onClick={() => { ungroupCurrentSelection(); closeContextMenu() }} disabled={readOnly || selection.nodeIds.length === 0}><span>Ungroup</span><kbd>⇧⌘ G</kbd></button>
+          <div className="minucanvas-context-menu__separator" />
+          <div className="minucanvas-context-menu__label">Change order</div>
+          <button type="button" onClick={() => { bringCurrentSelectionToFront(); closeContextMenu() }} disabled={readOnly || selection.nodeIds.length === 0}><span>Bring to front</span><kbd>⌘ ]</kbd></button>
+          <button type="button" onClick={() => { sendCurrentSelectionToBack(); closeContextMenu() }} disabled={readOnly || selection.nodeIds.length === 0}><span>Send to back</span><kbd>⌘ [</kbd></button>
+          <div className="minucanvas-context-menu__separator" />
+          <div className="minucanvas-context-menu__submenu">
+            <button type="button" disabled={readOnly || selection.nodeIds.length < 2}><span>Align</span><kbd>›</kbd></button>
+            <div className="minucanvas-context-menu minucanvas-context-menu__submenu-panel" role="menu">
+              <button type="button" onClick={() => { alignCurrentSelection('left'); closeContextMenu() }}><span>Left</span></button>
+              <button type="button" onClick={() => { alignCurrentSelection('center'); closeContextMenu() }}><span>Center</span></button>
+              <button type="button" onClick={() => { alignCurrentSelection('right'); closeContextMenu() }}><span>Right</span></button>
+              <button type="button" onClick={() => { alignCurrentSelection('top'); closeContextMenu() }}><span>Top</span></button>
+              <button type="button" onClick={() => { alignCurrentSelection('middle'); closeContextMenu() }}><span>Middle</span></button>
+              <button type="button" onClick={() => { alignCurrentSelection('bottom'); closeContextMenu() }}><span>Bottom</span></button>
+            </div>
+          </div>
+          <div className="minucanvas-context-menu__submenu">
+            <button type="button" disabled={readOnly || selection.nodeIds.length < 3}><span>Distribute</span><kbd>›</kbd></button>
+            <div className="minucanvas-context-menu minucanvas-context-menu__submenu-panel" role="menu">
+              <button type="button" onClick={() => { distributeCurrentSelection('horizontal'); closeContextMenu() }}><span>Horizontal</span></button>
+              <button type="button" onClick={() => { distributeCurrentSelection('vertical'); closeContextMenu() }}><span>Vertical</span></button>
+            </div>
+          </div>
+          <div className="minucanvas-context-menu__separator" />
+          <button type="button" className="minucanvas-context-menu__danger" onClick={() => { deleteCurrentSelection(); closeContextMenu() }} disabled={readOnly || (selection.nodeIds.length === 0 && selection.edgeIds.length === 0)}><span>Delete</span><kbd>⌫</kbd></button>
+        </div>
+      ) : null}
       <div className="minucanvas-status" aria-live="polite">
         <span>{formatToolLabel(activeTool)}</span>
         <span>{Math.round(viewport.zoom * 100)}%</span>
