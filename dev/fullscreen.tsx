@@ -82,6 +82,10 @@ function FullscreenExample() {
   const [tool, setTool] = useState<CanvasTool>('select')
   const [selected, setSelected] = useState({ nodeIds: [] as string[], edgeIds: [] as string[] })
 
+  async function handleDemoUpload(file: File) {
+    return URL.createObjectURL(file)
+  }
+
   return (
     <div className="fullscreen-shell">
       <header className="fullscreen-topbar">
@@ -112,6 +116,8 @@ function FullscreenExample() {
           selectedNodeIds={selected.nodeIds}
           selectedEdgeIds={selected.edgeIds}
           onSelectionChange={setSelected}
+          onUpload={handleDemoUpload}
+          onExternalContentWarning={(warning) => console.warn(warning.message, warning)}
           canvasTheme="dark"
           shapeTheme="outline"
           grid

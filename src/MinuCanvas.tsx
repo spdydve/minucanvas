@@ -7,7 +7,9 @@ import {
   useMemo,
   useRef,
   useState,
+  type ClipboardEvent,
   type CSSProperties,
+  type DragEvent,
   type ForwardedRef,
   type KeyboardEvent,
   type MouseEvent,
@@ -17,6 +19,7 @@ import {
 import { anchorForEdgeAnchor, autoSidePair, canvasBounds, clientToCanvas, edgeAnchorForPoint, edgeLabelPoint, edgePath, sideFacingPoint, sideForPoint, type Point } from './geometry'
 import {
   alignSelection as alignSelectionInDocument,
+  bringSelectionForward,
   bringSelectionToFront,
   cloneCanvas,
   createCanvasEdge,
@@ -28,6 +31,7 @@ import {
   groupSelection as groupSelectionInDocument,
   nodeLabel,
   normalizeSelection,
+  sendSelectionBackward,
   sendSelectionToBack,
   shapeForTool,
   snapPoint,
@@ -56,6 +60,10 @@ interface ConnectorAnchor extends CanvasEdgeAnchor {
   nodeId: string
   toEnd: 'none' | 'arrow'
 }
+
+type AlignmentGuide =
+  | { axis: 'x'; value: number; from: number; to: number }
+  | { axis: 'y'; value: number; from: number; to: number }
 
 type DragState<NodeExtra extends Record<string, unknown>> =
   | {
@@ -87,6 +95,7 @@ type DragState<NodeExtra extends Record<string, unknown>> =
       handle: ResizeHandle
       startPoint: Point
       original: CanvasNode<NodeExtra>
+      childOriginals: Map<string, CanvasNode<NodeExtra>>
     }
   | {
       kind: 'selection-box'
@@ -110,6 +119,19 @@ type AddDirection = JsonCanvasSide
 type CanvasClipboardPayload<NodeExtra extends Record<string, unknown>, EdgeExtra extends Record<string, unknown>> = {
   nodes: Array<CanvasNode<NodeExtra>>
   edges: Array<CanvasEdge<EdgeExtra>>
+}
+
+type ExportArea = 'canvas' | 'selection'
+type ExportFileType = 'svg' | 'png'
+type ExportBackground = 'transparent' | 'solid'
+type ExportColorMode = 'light' | 'dark'
+
+type ExportOptions = {
+  area: ExportArea
+  fileType: ExportFileType
+  quality: number
+  background: ExportBackground
+  colorMode: ExportColorMode
 }
 
 function clampZoom(zoom: number): number {
@@ -160,6 +182,106 @@ function edgeMarkerEnd(edge: CanvasEdge): string | undefined {
   return (edge.toEnd ?? 'arrow') === 'arrow' ? 'url(#minucanvas-arrow)' : undefined
 }
 
+function isUrlText(value: string): boolean {
+  try {
+    const url = new URL(value.trim())
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+function isImageUrl(value: string): boolean {
+  return /\.(png|jpe?g|gif|webp|svg)(\?.*)?$/i.test(value.trim())
+}
+
+function isImageFile(file: File): boolean {
+  return file.type.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg)$/i.test(file.name)
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result ?? ''))
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(file)
+  })
+}
+
+function imageSize(src: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const image = new Image()
+    image.onload = () => resolve({ width: image.naturalWidth || image.width, height: image.naturalHeight || image.height })
+    image.onerror = reject
+    image.src = src
+  })
+}
+
+function fitImageSize(width: number, height: number, maxWidth = 900, maxHeight = 600): { width: number; height: number } {
+  if (width <= 0 || height <= 0) return { width: 640, height: 360 }
+  const scale = Math.min(1, maxWidth / width, maxHeight / height)
+  return { width: Math.round(width * scale), height: Math.round(height * scale) }
+}
+
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+function wrapTextForSvg(text: string, maxWidth: number, fontSize: number): string[] {
+  const explicitLines = text.split('\n')
+  const maxChars = Math.max(1, Math.floor(maxWidth / (fontSize * 0.58)))
+  return explicitLines.flatMap((line) => {
+    const words = line.split(/\s+/).filter(Boolean)
+    if (words.length === 0) return ['']
+    const lines: string[] = []
+    let current = ''
+    for (const word of words) {
+      const next = current ? `${current} ${word}` : word
+      if (next.length > maxChars && current) {
+        lines.push(current)
+        current = word
+      } else {
+        current = next
+      }
+    }
+    if (current) lines.push(current)
+    return lines
+  })
+}
+
+function svgText(
+  text: string,
+  x: number,
+  y: number,
+  options: { color: string; fontSize: number; fontWeight: CSSProperties['fontWeight']; textAnchor: 'start' | 'middle' | 'end'; maxWidth?: number },
+): string {
+  const lines = options.maxWidth ? wrapTextForSvg(text, options.maxWidth, options.fontSize) : text.split('\n')
+  const lineHeight = options.fontSize * 1.25
+  const startY = y - ((lines.length - 1) * lineHeight) / 2
+  const tspans = lines.map((line, index) => `<tspan x="${x}" y="${startY + index * lineHeight}">${escapeXml(line)}</tspan>`).join('')
+  return `<text fill="${options.color}" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="${options.fontSize}" font-weight="${options.fontWeight}" text-anchor="${options.textAnchor}" dominant-baseline="middle">${tspans}</text>`
+}
+
+function svgShapeForNode(node: CanvasNode, defaultColor: string): string {
+  const style = node.style ?? {}
+  const fill = style.fill ?? node.background ?? 'transparent'
+  const stroke = style.stroke ?? node.color ?? defaultColor
+  const strokeWidth = style.strokeWidth ?? 1.5
+  const dash = style.strokeStyle === 'dashed' || style.strokeStyle === 'sketch' ? ' stroke-dasharray="10 8"' : style.strokeStyle === 'dotted' ? ' stroke-dasharray="2 8"' : ''
+  if (node.type === 'image') return `<image href="${escapeXml(node.file ?? node.url ?? '')}" x="${node.x}" y="${node.y}" width="${node.width}" height="${node.height}" preserveAspectRatio="xMidYMid meet" />`
+  if (node.shape === 'text') return ''
+  if (node.shape === 'ellipse') return `<ellipse cx="${node.x + node.width / 2}" cy="${node.y + node.height / 2}" rx="${node.width / 2}" ry="${node.height / 2}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}"${dash} />`
+  if (node.shape === 'diamond') return `<polygon points="${node.x + node.width / 2},${node.y} ${node.x + node.width},${node.y + node.height / 2} ${node.x + node.width / 2},${node.y + node.height} ${node.x},${node.y + node.height / 2}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}"${dash} />`
+  if (node.shape === 'parallelogram') return `<polygon points="${node.x + node.width * 0.18},${node.y} ${node.x + node.width},${node.y} ${node.x + node.width * 0.82},${node.y + node.height} ${node.x},${node.y + node.height}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}"${dash} />`
+  if (node.shape === 'hexagon') return `<polygon points="${node.x + node.width * 0.2},${node.y} ${node.x + node.width * 0.8},${node.y} ${node.x + node.width},${node.y + node.height / 2} ${node.x + node.width * 0.8},${node.y + node.height} ${node.x + node.width * 0.2},${node.y + node.height} ${node.x},${node.y + node.height / 2}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}"${dash} />`
+  const radius = node.shape === 'pill' ? Math.min(node.width, node.height) / 2 : node.shape === 'rectangle' ? 2 : style.borderRadius ?? 10
+  return `<rect x="${node.x}" y="${node.y}" width="${node.width}" height="${node.height}" rx="${radius}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}"${dash} />`
+}
+
 function formatToolLabel(tool: CanvasTool): string {
   return tool.slice(0, 1).toUpperCase() + tool.slice(1)
 }
@@ -203,6 +325,53 @@ function rectFromLine(a: Point, b: Point, padding = 8): Pick<CanvasNode, 'x' | '
   return { x, y, width: Math.abs(a.x - b.x) + padding * 2, height: Math.abs(a.y - b.y) + padding * 2 }
 }
 
+function boundsForNodes(nodes: Array<Pick<CanvasNode, 'x' | 'y' | 'width' | 'height'>>): Pick<CanvasNode, 'x' | 'y' | 'width' | 'height'> | null {
+  if (nodes.length === 0) return null
+  const x = Math.min(...nodes.map((node) => node.x))
+  const y = Math.min(...nodes.map((node) => node.y))
+  const right = Math.max(...nodes.map((node) => node.x + node.width))
+  const bottom = Math.max(...nodes.map((node) => node.y + node.height))
+  return { x, y, width: right - x, height: bottom - y }
+}
+
+function snapMovingBoundsToGuides(
+  movingBounds: Pick<CanvasNode, 'x' | 'y' | 'width' | 'height'>,
+  stationaryNodes: Array<Pick<CanvasNode, 'x' | 'y' | 'width' | 'height'>>,
+  threshold: number,
+): { dx: number; dy: number; guides: AlignmentGuide[] } {
+  let bestX: { delta: number; guide: AlignmentGuide } | null = null
+  let bestY: { delta: number; guide: AlignmentGuide } | null = null
+  const movingX = [movingBounds.x, movingBounds.x + movingBounds.width / 2, movingBounds.x + movingBounds.width]
+  const movingY = [movingBounds.y, movingBounds.y + movingBounds.height / 2, movingBounds.y + movingBounds.height]
+
+  for (const node of stationaryNodes) {
+    const nodeX = [node.x, node.x + node.width / 2, node.x + node.width]
+    const nodeY = [node.y, node.y + node.height / 2, node.y + node.height]
+    for (const source of movingX) {
+      for (const target of nodeX) {
+        const delta = target - source
+        if (Math.abs(delta) <= threshold && (!bestX || Math.abs(delta) < Math.abs(bestX.delta))) {
+          bestX = { delta, guide: { axis: 'x', value: target, from: Math.min(movingBounds.y, node.y), to: Math.max(movingBounds.y + movingBounds.height, node.y + node.height) } }
+        }
+      }
+    }
+    for (const source of movingY) {
+      for (const target of nodeY) {
+        const delta = target - source
+        if (Math.abs(delta) <= threshold && (!bestY || Math.abs(delta) < Math.abs(bestY.delta))) {
+          bestY = { delta, guide: { axis: 'y', value: target, from: Math.min(movingBounds.x, node.x), to: Math.max(movingBounds.x + movingBounds.width, node.x + node.width) } }
+        }
+      }
+    }
+  }
+
+  return {
+    dx: bestX?.delta ?? 0,
+    dy: bestY?.delta ?? 0,
+    guides: [bestX?.guide, bestY?.guide].filter((guide): guide is AlignmentGuide => Boolean(guide)),
+  }
+}
+
 function resizeNodeRect(node: CanvasNode, handle: ResizeHandle, dx: number, dy: number, snapToGrid: boolean, gridSize: number): Pick<CanvasNode, 'x' | 'y' | 'width' | 'height'> {
   let x = node.x
   let y = node.y
@@ -238,6 +407,34 @@ function resizeNodeRect(node: CanvasNode, handle: ResizeHandle, dx: number, dy: 
     y: topLeft.y,
     width: Math.max(MIN_NODE_SIZE, bottomRight.x - topLeft.x),
     height: Math.max(MIN_NODE_SIZE, bottomRight.y - topLeft.y),
+  }
+}
+
+function fitGroupsToChildren<NodeExtra extends Record<string, unknown>, EdgeExtra extends Record<string, unknown>>(
+  document: JsonCanvasDocument<NodeExtra, EdgeExtra>,
+  groupIds: Iterable<string>,
+): JsonCanvasDocument<NodeExtra, EdgeExtra> {
+  const ids = new Set(groupIds)
+  if (ids.size === 0) return document
+  const padding = 32
+  return {
+    ...document,
+    nodes: document.nodes.map((node) => {
+      if (!ids.has(node.id) || node.type !== 'group') return node
+      const children = document.nodes.filter((child) => child.groupId === node.id)
+      if (children.length === 0) return node
+      const minX = Math.min(...children.map((child) => child.x))
+      const minY = Math.min(...children.map((child) => child.y))
+      const maxX = Math.max(...children.map((child) => child.x + child.width))
+      const maxY = Math.max(...children.map((child) => child.y + child.height))
+      return {
+        ...node,
+        x: minX - padding,
+        y: minY - padding,
+        width: maxX - minX + padding * 2,
+        height: maxY - minY + padding * 2,
+      }
+    }),
   }
 }
 
@@ -294,6 +491,10 @@ function DefaultNodeContent({ node, editing }: { node: CanvasNode; editing: bool
   if (node.type === 'group') {
     return <span className="minucanvas-node__group-label">{node.label ?? label}</span>
   }
+  if (node.type === 'image') {
+    const src = node.file ?? node.url ?? ''
+    return src ? <img className="minucanvas-node__image" src={src} alt={node.label ?? label} draggable={false} /> : <span className="minucanvas-node__muted">Image</span>
+  }
   return <span>{label}</span>
 }
 
@@ -321,6 +522,9 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
     renderNode,
     renderEdgeLabel,
     getNodeDefaults,
+    onUpload,
+    allowInlineImages = false,
+    onExternalContentWarning,
     grid = true,
     snapToGrid = true,
     gridSize = 20,
@@ -348,6 +552,9 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
   const [panningModifierActive, setPanningModifierActive] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null)
+  const [alignmentGuides, setAlignmentGuides] = useState<AlignmentGuide[]>([])
+  const [exportDialogOpen, setExportDialogOpen] = useState(false)
+  const [exportOptions, setExportOptions] = useState<ExportOptions>({ area: 'canvas', fileType: 'png', quality: 2, background: 'solid', colorMode: 'dark' })
   const activeTool = tool ?? localTool
   const selection = normalizeSelection({
     nodeIds: selectedNodeIds ?? localSelection.nodeIds,
@@ -403,8 +610,8 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
     (canvasPoint: Point, sourceTool: CanvasTool): CanvasNode<NodeExtra> => {
       const shape = shapeForTool(sourceTool)
       const defaults: Partial<CanvasNode<NodeExtra>> = getNodeDefaults?.(sourceTool, canvasPoint) ?? {}
-      const width = defaults.width ?? (sourceTool === 'text' ? 220 : sourceTool === 'diamond' ? 140 : 180)
-      const height = defaults.height ?? (sourceTool === 'diamond' ? 140 : 100)
+      const width = defaults.width ?? (sourceTool === 'text' ? 180 : sourceTool === 'diamond' ? 140 : 180)
+      const height = defaults.height ?? (sourceTool === 'text' ? 48 : sourceTool === 'diamond' ? 140 : 100)
       const point = snapToGrid ? snapPoint(canvasPoint, gridSize) : canvasPoint
       const partial = {
         ...defaults,
@@ -431,6 +638,28 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
     emitChange(deleteSelectionFromDocument(value, selection), 'delete')
     emitSelection({ nodeIds: [], edgeIds: [] })
   }, [emitChange, emitSelection, readOnly, selection, value])
+
+  const setSelectionLocked = useCallback((locked: boolean) => {
+    if (readOnly || selection.nodeIds.length === 0) return
+    emitChange({
+      ...value,
+      nodes: value.nodes.map((node) => selection.nodeIds.includes(node.id) ? { ...node, locked } : node),
+    }, 'update-node')
+  }, [emitChange, readOnly, selection.nodeIds, value])
+
+  const resizeSelectedImages = useCallback((scale: number) => {
+    if (readOnly || selection.nodeIds.length === 0) return
+    const next = {
+      ...value,
+      nodes: value.nodes.map((node) => {
+        if (!selection.nodeIds.includes(node.id) || node.type !== 'image') return node
+        const width = node.imageWidth ?? node.width
+        const height = node.imageHeight ?? node.height
+        return { ...node, width: Math.max(24, Math.round(width * scale)), height: Math.max(24, Math.round(height * scale)) }
+      }),
+    }
+    emitChange(next, 'update-node')
+  }, [emitChange, readOnly, selection.nodeIds, value])
 
   const duplicateCurrentSelection = useCallback(() => {
     if (readOnly || selection.nodeIds.length === 0) return
@@ -485,14 +714,17 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
       const amount = snapToGrid ? gridSize : 10
       const dx = direction === 'left' ? -amount : direction === 'right' ? amount : 0
       const dy = direction === 'top' ? -amount : direction === 'bottom' ? amount : 0
-      const movedNodeIds = expandNodeIdsForGroups(selection.nodeIds)
+      const movedNodeIds = expandNodeIdsForGroups(selection.nodeIds).filter((nodeId) => !nodeById.get(nodeId)?.locked)
+      if (movedNodeIds.length === 0) return false
       const moved = movedNodeIds.reduce<JsonCanvasDocument<NodeExtra, EdgeExtra>>((document, nodeId) => (
         updateNode(document, nodeId, (node) => ({ ...node, x: node.x + dx, y: node.y + dy }))
       ), value)
-      emitChange(recenterMovedNodeEdges(moved, movedNodeIds), 'move-node')
+      const movedSet = new Set(movedNodeIds)
+      const changedGroups = new Set(moved.nodes.flatMap((node) => node.groupId && movedSet.has(node.id) && !movedSet.has(node.groupId) ? [node.groupId] : []))
+      emitChange(recenterMovedNodeEdges(fitGroupsToChildren(moved, changedGroups), movedNodeIds), 'move-node')
       return true
     },
-    [emitChange, expandNodeIdsForGroups, gridSize, readOnly, selection.nodeIds, snapToGrid, value],
+    [emitChange, expandNodeIdsForGroups, gridSize, nodeById, readOnly, selection.nodeIds, snapToGrid, value],
   )
 
   const navigateSelection = useCallback(
@@ -708,6 +940,16 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
     emitSelection({ nodeIds: [], edgeIds: [] })
   }, [emitChange, emitSelection, readOnly, selection, value])
 
+  const bringCurrentSelectionForward = useCallback(() => {
+    if (readOnly || selection.nodeIds.length === 0) return
+    emitChange(bringSelectionForward(value, selection), 'update-node')
+  }, [emitChange, readOnly, selection, value])
+
+  const sendCurrentSelectionBackward = useCallback(() => {
+    if (readOnly || selection.nodeIds.length === 0) return
+    emitChange(sendSelectionBackward(value, selection), 'update-node')
+  }, [emitChange, readOnly, selection, value])
+
   const bringCurrentSelectionToFront = useCallback(() => {
     if (readOnly || selection.nodeIds.length === 0) return
     emitChange(bringSelectionToFront(value, selection), 'update-node')
@@ -727,6 +969,118 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
     if (readOnly || selection.nodeIds.length < 3) return
     emitChange(recenterMovedNodeEdges(distributeSelectionInDocument(value, selection, distribution), selection.nodeIds), 'move-node')
   }, [emitChange, readOnly, selection, value])
+
+  const exportDocumentForArea = useCallback((area: ExportArea): JsonCanvasDocument<NodeExtra, EdgeExtra> => {
+    if (area === 'canvas' || (selection.nodeIds.length === 0 && selection.edgeIds.length === 0)) return value
+    const nodeIds = new Set(selection.nodeIds)
+    const edges = value.edges.filter((edge) => selection.edgeIds.includes(edge.id) || (nodeIds.has(edge.fromNode) && nodeIds.has(edge.toNode)))
+    for (const edge of edges) {
+      nodeIds.add(edge.fromNode)
+      nodeIds.add(edge.toNode)
+    }
+    return {
+      nodes: value.nodes.filter((node) => nodeIds.has(node.id)),
+      edges,
+    }
+  }, [selection.edgeIds, selection.nodeIds, value])
+
+  const exportSvgWithOptions = useCallback((options: ExportOptions): string => {
+    const exportDocument = exportDocumentForArea(options.area)
+    const bounds = canvasBounds(exportDocument.nodes, 80)
+    const defaultColor = options.colorMode === 'dark' ? '#f4f4f5' : '#111827'
+    const background = options.colorMode === 'dark' ? '#151515' : '#ffffff'
+    const nodes = new Map(exportDocument.nodes.map((node) => [node.id, node]))
+    const markerMarkup = exportDocument.edges
+      .filter((edge) => (edge.toEnd ?? 'arrow') === 'arrow')
+      .map((edge) => {
+        const stroke = edge.style?.stroke ?? edge.color ?? defaultColor
+        return `<marker id="arrow-${escapeXml(edge.id)}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="${stroke}" /></marker>`
+      })
+      .join('\n')
+    const edgeMarkup = exportDocument.edges.map((edge) => {
+      const fromNode = nodes.get(edge.fromNode)
+      const toNode = nodes.get(edge.toNode)
+      if (!fromNode || !toNode) return ''
+      const path = edgePath(edge, fromNode, toNode)
+      const stroke = edge.style?.stroke ?? edge.color ?? defaultColor
+      const strokeWidth = edge.style?.strokeWidth ?? 1.5
+      const dash = edgeDash(edge) ? ` stroke-dasharray="${edgeDash(edge)}"` : ''
+      const marker = (edge.toEnd ?? 'arrow') === 'arrow' ? ` marker-end="url(#arrow-${escapeXml(edge.id)})"` : ''
+      const labelPoint = edge.label ? edgeLabelPoint(edge, fromNode, toNode) : null
+      const label = edge.label && labelPoint
+        ? svgText(edge.label, labelPoint.x, labelPoint.y, { color: defaultColor, fontSize: 12, fontWeight: 500, textAnchor: 'middle' })
+        : ''
+      return `<path d="${path}" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round"${dash}${marker} />\n${label}`
+    }).join('\n')
+    const nodeMarkup = exportDocument.nodes.map((node) => {
+      const shape = svgShapeForNode(node, defaultColor)
+      const label = nodeLabel(node)
+      const textColor = node.style?.text ?? defaultColor
+      const fontSize = node.style?.fontSize ?? 14
+      const fontWeight = node.style?.fontWeight ?? 500
+      const textAnchor: 'start' | 'middle' | 'end' = node.style?.textAlign === 'left' ? 'start' : node.style?.textAlign === 'right' ? 'end' : 'middle'
+      const textX = node.style?.textAlign === 'left' ? node.x + 12 : node.style?.textAlign === 'right' ? node.x + node.width - 12 : node.x + node.width / 2
+      const textY = node.type === 'group' ? node.y - 8 : node.y + node.height / 2
+      const textOptions = { color: textColor, fontSize, fontWeight, textAnchor }
+      const text = label ? svgText(label, textX, textY, node.type === 'group' ? textOptions : { ...textOptions, maxWidth: Math.max(24, node.width - 24) }) : ''
+      return `${shape}\n${text}`
+    }).join('\n')
+    const backgroundMarkup = options.background === 'solid'
+      ? `<rect x="${bounds.x}" y="${bounds.y}" width="${bounds.width}" height="${bounds.height}" fill="${background}" />`
+      : `<rect x="${bounds.x}" y="${bounds.y}" width="${bounds.width}" height="${bounds.height}" fill="transparent" />`
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${bounds.width}" height="${bounds.height}" viewBox="${bounds.x} ${bounds.y} ${bounds.width} ${bounds.height}">
+<defs>${markerMarkup}</defs>
+${backgroundMarkup}
+${edgeMarkup}
+${nodeMarkup}
+</svg>`
+  }, [exportDocumentForArea])
+
+  const exportPngWithOptions = useCallback(async (options: ExportOptions): Promise<string> => {
+    const svg = exportSvgWithOptions(options)
+    const bounds = canvasBounds(exportDocumentForArea(options.area).nodes, 80)
+    const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    try {
+      const image = new Image()
+      const loaded = new Promise<void>((resolve, reject) => {
+        image.onload = () => resolve()
+        image.onerror = reject
+      })
+      image.src = url
+      await loaded
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.max(1, Math.ceil(bounds.width * options.quality))
+      canvas.height = Math.max(1, Math.ceil(bounds.height * options.quality))
+      const context = canvas.getContext('2d')
+      if (!context) throw new Error('Could not create canvas context')
+      context.scale(options.quality, options.quality)
+      context.drawImage(image, 0, 0)
+      return canvas.toDataURL('image/png')
+    } finally {
+      URL.revokeObjectURL(url)
+    }
+  }, [exportDocumentForArea, exportSvgWithOptions])
+
+  const exportSvg = useCallback((): string => exportSvgWithOptions(exportOptions), [exportOptions, exportSvgWithOptions])
+
+  const exportPng = useCallback(async (): Promise<string> => exportPngWithOptions(exportOptions), [exportOptions, exportPngWithOptions])
+
+  const downloadExport = useCallback(async (options: ExportOptions) => {
+    const anchor = document.createElement('a')
+    if (options.fileType === 'svg') {
+      const blob = new Blob([exportSvgWithOptions(options)], { type: 'image/svg+xml;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      anchor.href = url
+      anchor.download = 'minucanvas.svg'
+      anchor.click()
+      URL.revokeObjectURL(url)
+      return
+    }
+    anchor.href = await exportPngWithOptions(options)
+    anchor.download = 'minucanvas.png'
+    anchor.click()
+  }, [exportPngWithOptions, exportSvgWithOptions])
 
   const zoomBy = useCallback((delta: number) => {
     setViewport({ ...viewport, zoom: viewport.zoom + delta })
@@ -764,15 +1118,19 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
     createEdge: createEdgeBetween,
     groupSelection: groupCurrentSelection,
     ungroupSelection: ungroupCurrentSelection,
+    bringSelectionForward: bringCurrentSelectionForward,
+    sendSelectionBackward: sendCurrentSelectionBackward,
     bringSelectionToFront: bringCurrentSelectionToFront,
     sendSelectionToBack: sendCurrentSelectionToBack,
     alignSelection: alignCurrentSelection,
     distributeSelection: distributeCurrentSelection,
+    exportSvg,
+    exportPng,
     zoomIn: () => zoomBy(ZOOM_STEP),
     zoomOut: () => zoomBy(-ZOOM_STEP),
     resetView,
     fitView,
-  }), [alignCurrentSelection, bringCurrentSelectionToFront, createEdgeBetween, deleteCurrentSelection, distributeCurrentSelection, emitChange, emitSelection, fitView, groupCurrentSelection, resetView, selection, sendCurrentSelectionToBack, setActiveTool, ungroupCurrentSelection, value, zoomBy])
+  }), [alignCurrentSelection, bringCurrentSelectionForward, bringCurrentSelectionToFront, createEdgeBetween, deleteCurrentSelection, distributeCurrentSelection, emitChange, emitSelection, exportPng, exportSvg, fitView, groupCurrentSelection, resetView, selection, sendCurrentSelectionBackward, sendCurrentSelectionToBack, setActiveTool, ungroupCurrentSelection, value, zoomBy])
 
   useEffect(() => {
     if (autoFocus) rootRef.current?.focus()
@@ -871,7 +1229,7 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
     const nextSelection = { nodeIds: nextNodeIds, edgeIds: [] }
     emitSelection(nextSelection)
 
-    const dragNodeIds = expandNodeIdsForGroups(nextSelection.nodeIds)
+    const dragNodeIds = expandNodeIdsForGroups(nextSelection.nodeIds).filter((id) => !nodeById.get(id)?.locked)
     const originals = new Map<string, CanvasNode<NodeExtra>>()
     for (const id of dragNodeIds) {
       const selectedNode = nodeById.get(id)
@@ -1020,10 +1378,31 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
       const dx = point.x - drag.startPoint.x
       const dy = point.y - drag.startPoint.y
       const rect = resizeNodeRect(drag.original, drag.handle, dx, dy, snapToGrid, gridSize)
+      const resized = drag.original.type === 'group'
+        ? value.nodes.reduce<JsonCanvasDocument<NodeExtra, EdgeExtra>>((document, node) => {
+            if (node.id === drag.nodeId) return updateNode(document, node.id, (current) => ({ ...current, ...rect }))
+            const childOriginal = drag.childOriginals.get(node.id)
+            if (!childOriginal) return document
+            const scaleX = rect.width / drag.original.width
+            const scaleY = rect.height / drag.original.height
+            return updateNode(document, node.id, (current) => ({
+              ...current,
+              x: rect.x + (childOriginal.x - drag.original.x) * scaleX,
+              y: rect.y + (childOriginal.y - drag.original.y) * scaleY,
+              width: Math.max(MIN_NODE_SIZE, childOriginal.width * scaleX),
+              height: Math.max(MIN_NODE_SIZE, childOriginal.height * scaleY),
+            }))
+          }, value)
+        : updateNode(value, drag.nodeId, (node) => ({ ...node, ...rect }))
+      const resizedNode = resized.nodes.find((node) => node.id === drag.nodeId)
+      const childIds = [...drag.childOriginals.keys()]
+      const fitted = drag.original.type === 'group'
+        ? resized
+        : fitGroupsToChildren(resized, resizedNode?.groupId ? [resizedNode.groupId] : [])
       emitChange(
         recenterMovedNodeEdges(
-          updateNode(value, drag.nodeId, (node) => ({ ...node, ...rect })),
-          [drag.nodeId],
+          fitted,
+          [drag.nodeId, ...childIds],
         ),
         'update-node',
       )
@@ -1032,20 +1411,44 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
 
     const dx = point.x - drag.startPoint.x
     const dy = point.y - drag.startPoint.y
+    const draggedOriginals = drag.nodeIds.flatMap((nodeId) => {
+      const original = drag.originals.get(nodeId)
+      return original ? [original] : []
+    })
+    const preliminaryNodes = draggedOriginals.map((original) => {
+      const nextPosition = snapToGrid
+        ? snapPoint({ x: original.x + dx, y: original.y + dy }, gridSize)
+        : { x: original.x + dx, y: original.y + dy }
+      return { ...original, x: nextPosition.x, y: nextPosition.y }
+    })
+    const preliminaryBounds = boundsForNodes(preliminaryNodes)
+    const guideSnap = preliminaryBounds
+      ? snapMovingBoundsToGuides(
+          preliminaryBounds,
+          value.nodes.filter((node) => !drag.nodeIds.includes(node.id)),
+          6 / viewport.zoom,
+        )
+      : { dx: 0, dy: 0, guides: [] }
+    setAlignmentGuides(guideSnap.guides)
+    const guideDx = snapToGrid ? 0 : guideSnap.dx
+    const guideDy = snapToGrid ? 0 : guideSnap.dy
     const moved = drag.nodeIds.reduce<JsonCanvasDocument<NodeExtra, EdgeExtra>>((document, nodeId) => {
       const original = drag.originals.get(nodeId)
       if (!original) return document
       const nextPosition = snapToGrid
         ? snapPoint({ x: original.x + dx, y: original.y + dy }, gridSize)
-        : { x: original.x + dx, y: original.y + dy }
+        : { x: original.x + dx + guideDx, y: original.y + dy + guideDy }
       return updateNode(document, nodeId, (node) => ({ ...node, x: nextPosition.x, y: nextPosition.y }))
     }, value)
-    emitChange(recenterMovedNodeEdges(moved, drag.nodeIds), 'move-node')
-  }, [activeGroupId, connectorAnchorAtPoint, emitChange, gridSize, nodeById, pointFromEvent, setViewport, snapToGrid, updateEdgeAnchor, value])
+    const movedSet = new Set(drag.nodeIds)
+    const changedGroups = new Set(moved.nodes.flatMap((node) => node.groupId && movedSet.has(node.id) && !movedSet.has(node.groupId) ? [node.groupId] : []))
+    emitChange(recenterMovedNodeEdges(fitGroupsToChildren(moved, changedGroups), drag.nodeIds), 'move-node')
+  }, [activeGroupId, connectorAnchorAtPoint, emitChange, gridSize, nodeById, pointFromEvent, setViewport, snapToGrid, updateEdgeAnchor, value, viewport.zoom])
 
   const handlePointerUp = useCallback((event: PointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current
     dragRef.current = null
+    setAlignmentGuides([])
     undoTransactionRef.current = null
     undoTransactionPushedRef.current = false
     forcePointerFrame((frame) => frame + 1)
@@ -1145,6 +1548,105 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
     return true
   }, [emitChange, emitSelection, value.edges, value.nodes])
 
+  const createExternalNodeAt = useCallback(async (input: { text?: string; file?: File; point: Point }) => {
+    if (readOnly) return false
+    const point = snapToGrid ? snapPoint(input.point, gridSize) : input.point
+    let partial: Partial<CanvasNode<NodeExtra>> | null = null
+
+    if (input.file) {
+      if (!isImageFile(input.file)) {
+        onExternalContentWarning?.({ code: 'unsupported-file', message: `Unsupported file type: ${input.file.type || input.file.name}`, file: input.file })
+        return false
+      }
+      let src: string | null = null
+      if (onUpload) {
+        src = await onUpload(input.file)
+      } else if (allowInlineImages) {
+        onExternalContentWarning?.({ code: 'inline-image-fallback', message: 'No upload handler configured. Inlining image as a data URL.', file: input.file })
+        src = await fileToDataUrl(input.file)
+      } else {
+        onExternalContentWarning?.({ code: 'missing-upload-handler', message: 'Pasted images require an onUpload handler.', file: input.file })
+        return false
+      }
+      const natural = await imageSize(src).catch(() => ({ width: 640, height: 360 }))
+      const size = fitImageSize(natural.width, natural.height)
+      partial = { type: 'image', file: src, label: input.file.name, shape: 'rectangle', width: size.width, height: size.height, imageWidth: natural.width, imageHeight: natural.height } as Partial<CanvasNode<NodeExtra>>
+    } else if (input.text) {
+      const text = input.text.trim()
+      if (!text) return false
+      if (isUrlText(text)) {
+        if (isImageUrl(text)) {
+          const natural = await imageSize(text).catch(() => ({ width: 640, height: 360 }))
+          const size = fitImageSize(natural.width, natural.height)
+          partial = { type: 'image', file: text, label: text.split('/').pop() ?? text, shape: 'rectangle', width: size.width, height: size.height, imageWidth: natural.width, imageHeight: natural.height } as Partial<CanvasNode<NodeExtra>>
+        } else {
+          partial = { type: 'link', url: text, label: text, shape: 'rounded-rectangle', width: 260, height: 90 } as Partial<CanvasNode<NodeExtra>>
+        }
+      } else {
+        partial = { type: 'text', text, shape: 'text', width: 240, height: Math.max(48, Math.min(180, text.split('\n').length * 28 + 20)) } as Partial<CanvasNode<NodeExtra>>
+      }
+    }
+
+    if (!partial) return false
+    const node = createCanvasNode<NodeExtra>({
+      ...partial,
+      x: point.x - (partial.width ?? 220) / 2,
+      y: point.y - (partial.height ?? 120) / 2,
+    } as Partial<CanvasNode<NodeExtra>>)
+    emitChange({ ...value, nodes: [...value.nodes, node] }, 'create-node')
+    emitSelection({ nodeIds: [node.id], edgeIds: [] })
+    setActiveTool('select')
+    return true
+  }, [allowInlineImages, emitChange, emitSelection, getNodeDefaults, gridSize, onExternalContentWarning, onUpload, readOnly, setActiveTool, snapToGrid, value])
+
+  const defaultExternalPastePoint = useCallback((): Point => {
+    const root = rootRef.current
+    if (!root) return { x: 0, y: 0 }
+    const rect = root.getBoundingClientRect()
+    return clientToCanvas({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }, rect, viewport)
+  }, [viewport])
+
+  const handlePaste = useCallback((event: ClipboardEvent<HTMLDivElement>) => {
+    if (readOnly || isEditableTarget(event.target)) return
+    const items = Array.from(event.clipboardData.items)
+    const fileItems = items.filter((item) => item.kind === 'file')
+    const file = fileItems.map((item) => item.getAsFile()).find((item): item is File => Boolean(item && isImageFile(item)))
+    if (file) {
+      event.preventDefault()
+      void createExternalNodeAt({ file, point: defaultExternalPastePoint() })
+      return
+    }
+    const text = event.clipboardData.getData('text/plain')
+    if (text) {
+      event.preventDefault()
+      void createExternalNodeAt({ text, point: defaultExternalPastePoint() })
+    }
+  }, [createExternalNodeAt, defaultExternalPastePoint, readOnly])
+
+  const handleDragOver = useCallback((event: DragEvent<HTMLDivElement>) => {
+    if (readOnly) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'copy'
+  }, [readOnly])
+
+  const handleDrop = useCallback((event: DragEvent<HTMLDivElement>) => {
+    if (readOnly) return
+    const root = rootRef.current
+    if (!root) return
+    const point = clientToCanvas({ x: event.clientX, y: event.clientY }, root.getBoundingClientRect(), viewport)
+    const file = Array.from(event.dataTransfer.files).find((item) => isImageFile(item))
+    if (file) {
+      event.preventDefault()
+      void createExternalNodeAt({ file, point })
+      return
+    }
+    const text = event.dataTransfer.getData('text/uri-list') || event.dataTransfer.getData('text/plain')
+    if (text) {
+      event.preventDefault()
+      void createExternalNodeAt({ text, point })
+    }
+  }, [createExternalNodeAt, readOnly, viewport])
+
   const handleWheel = useCallback((event: WheelEvent) => {
     event.preventDefault()
 
@@ -1205,7 +1707,7 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
       if (copyCurrentSelection()) deleteCurrentSelection()
       return
     }
-    if (mod && event.key.toLowerCase() === 'v' && !readOnly) {
+    if (mod && event.key.toLowerCase() === 'v' && !readOnly && clipboardRef.current) {
       event.preventDefault()
       pasteClipboard()
       return
@@ -1370,6 +1872,7 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
 
   const connectorPreview = dragRef.current?.kind === 'connector' ? dragRef.current : null
   const selectionBox = dragRef.current?.kind === 'selection-box' ? rectFromPoints(dragRef.current.startPoint, dragRef.current.pointer) : null
+  const activeGroup = activeGroupId ? nodeById.get(activeGroupId) : null
   const worldStyle: CSSProperties = {
     transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`,
   }
@@ -1394,6 +1897,10 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
       onKeyDown={handleKeyDown}
       onKeyUp={handleKeyUp}
       onContextMenu={handleContextMenu}
+      onPaste={handlePaste}
+      onDragEnter={handleDragOver}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
       onBlur={() => setPanningModifierActive(false)}
       onPointerDown={handleSurfacePointerDown}
       onPointerMove={handlePointerMove}
@@ -1576,7 +2083,7 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
           return (
             <div
               key={node.id}
-              className={`minucanvas-node minucanvas-node--type-${node.type} ${nodeShapeClass(node)}${selected ? ' minucanvas-node--selected' : ''}${editing ? ' minucanvas-node--editing' : ''}${pendingConnector ? ' minucanvas-node--connector-source' : ''}${activeGroupId === node.id ? ' minucanvas-node--active-group' : ''}${node.groupId && activeGroupId !== node.groupId ? ' minucanvas-node--group-child-locked' : ''}`}
+              className={`minucanvas-node minucanvas-node--type-${node.type} ${nodeShapeClass(node)}${selected ? ' minucanvas-node--selected' : ''}${editing ? ' minucanvas-node--editing' : ''}${pendingConnector ? ' minucanvas-node--connector-source' : ''}${activeGroupId === node.id ? ' minucanvas-node--active-group' : ''}${node.groupId && activeGroupId !== node.groupId ? ' minucanvas-node--group-child-locked' : ''}${node.locked ? ' minucanvas-node--locked' : ''}`}
               data-minucanvas-node-id={node.id}
               style={nodeStyle(node)}
               onPointerDown={(event) => handleNodePointerDown(event, node)}
@@ -1617,6 +2124,11 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
                     selectedRange?.addRange(range)
                   })
                 }}
+                onDoubleClick={(event) => {
+                  if (node.type !== 'group' || readOnly) return
+                  event.stopPropagation()
+                  setEditingNodeId(node.id)
+                }}
                 onKeyDown={(event) => {
                   event.stopPropagation()
                   if (event.key === 'Escape') {
@@ -1638,8 +2150,14 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
         })}
 
         <svg className="minucanvas-overlays" aria-hidden="true">
+          {alignmentGuides.map((guide, index) => (
+            guide.axis === 'x'
+              ? <line key={`guide-${index}`} className="minucanvas-alignment-guide" x1={guide.value} y1={guide.from - 24 / viewport.zoom} x2={guide.value} y2={guide.to + 24 / viewport.zoom} />
+              : <line key={`guide-${index}`} className="minucanvas-alignment-guide" x1={guide.from - 24 / viewport.zoom} y1={guide.value} x2={guide.to + 24 / viewport.zoom} y2={guide.value} />
+          ))}
           {value.nodes.map((node) => {
-            if (!selection.nodeIds.includes(node.id) || readOnly) return null
+            if (!selection.nodeIds.includes(node.id) || readOnly || node.locked) return null
+            const showAddHandles = node.type !== 'group'
             const addHandleOffset = 28 / viewport.zoom
             const resizeHandleSize = 10 / viewport.zoom
             const resizeHandleRadius = 2 / viewport.zoom
@@ -1661,7 +2179,7 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
             ]
             return (
               <g key={`${node.id}-shape-handles`}>
-                <g className="minucanvas-add-handles">
+                {showAddHandles ? <g className="minucanvas-add-handles">
                   {addHandles.map((handle) => (
                     <g
                       key={handle.direction}
@@ -1673,11 +2191,11 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
                       }}
                     >
                       <circle r={11} />
-                      <text className="minucanvas-add-handle__plus" textAnchor="middle" dominantBaseline="central">+</text>
+                      <path className="minucanvas-add-handle__icon" d="M -5 0 H 5 M 0 -5 V 5" />
                       <text className="minucanvas-add-handle__hint" x={handle.hintX} y={4} textAnchor={handle.hintAnchor}>{handle.label}</text>
                     </g>
                   ))}
-                </g>
+                </g> : null}
                 <g className="minucanvas-resize-handles">
                 {handles.map((handle) => (
                   <rect
@@ -1700,6 +2218,9 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
                         handle: handle.id,
                         startPoint: pointFromEvent(event),
                         original: node,
+                        childOriginals: node.type === 'group'
+                          ? new Map(value.nodes.filter((child) => child.groupId === node.id).map((child) => [child.id, child]))
+                          : new Map(),
                       }
                     }}
                   />
@@ -1758,6 +2279,63 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
           })}
         </svg>
       </div>
+      {exportDialogOpen ? (
+        <div className="minucanvas-export-backdrop" role="presentation" onPointerDown={() => setExportDialogOpen(false)}>
+          <div className="minucanvas-export-dialog" role="dialog" aria-modal="true" aria-label="Export" onPointerDown={(event) => event.stopPropagation()}>
+            <h2>Export</h2>
+            <label className="minucanvas-export-dialog__row">
+              <span>Export Area</span>
+              <span className="minucanvas-export-dialog__inline">
+                <label><input type="radio" checked={exportOptions.area === 'canvas'} onChange={() => setExportOptions((options) => ({ ...options, area: 'canvas' }))} /> Canvas</label>
+                <label><input type="radio" checked={exportOptions.area === 'selection'} disabled={selection.nodeIds.length === 0 && selection.edgeIds.length === 0} onChange={() => setExportOptions((options) => ({ ...options, area: 'selection' }))} /> Selection</label>
+              </span>
+            </label>
+            <label className="minucanvas-export-dialog__row">
+              <span>File Type</span>
+              <select value={exportOptions.fileType} onChange={(event) => setExportOptions((options) => ({ ...options, fileType: event.target.value as ExportFileType }))}>
+                <option value="png">Image</option>
+                <option value="svg">SVG</option>
+              </select>
+            </label>
+            {exportOptions.fileType === 'png' ? (
+              <>
+                <label className="minucanvas-export-dialog__row">
+                  <span>Image Quality</span>
+                  <select value={exportOptions.quality} onChange={(event) => setExportOptions((options) => ({ ...options, quality: Number(event.target.value) }))}>
+                    <option value={1}>1x</option>
+                    <option value={2}>2x</option>
+                    <option value={3}>3x</option>
+                  </select>
+                </label>
+                <label className="minucanvas-export-dialog__row">
+                  <span>Image Background</span>
+                  <select value={exportOptions.background} onChange={(event) => setExportOptions((options) => ({ ...options, background: event.target.value as ExportBackground }))}>
+                    <option value="solid">Solid</option>
+                    <option value="transparent">Transparent</option>
+                  </select>
+                </label>
+              </>
+            ) : null}
+            <label className="minucanvas-export-dialog__row">
+              <span>Color Mode</span>
+              <select value={exportOptions.colorMode} onChange={(event) => setExportOptions((options) => ({ ...options, colorMode: event.target.value as ExportColorMode }))}>
+                <option value="dark">Dark</option>
+                <option value="light">Light</option>
+              </select>
+            </label>
+            <div className="minucanvas-export-dialog__actions">
+              <button type="button" onClick={() => setExportDialogOpen(false)}>Cancel</button>
+              <button type="button" className="minucanvas-export-dialog__primary" onClick={() => { void downloadExport(exportOptions); setExportDialogOpen(false) }}>Export</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {activeGroup ? (
+        <div className="minucanvas-group-breadcrumb">
+          <span>Editing {activeGroup.label ?? activeGroup.text ?? 'Group'}</span>
+          <button type="button" onClick={() => { setActiveGroupId(null); emitSelection({ nodeIds: [activeGroup.id], edgeIds: [] }) }}>Done</button>
+        </div>
+      ) : null}
       {contextMenu ? (
         <div
           ref={contextMenuRef}
@@ -1773,13 +2351,30 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
           <button type="button" onClick={() => { duplicateCurrentSelection(); closeContextMenu() }} disabled={readOnly || selection.nodeIds.length === 0}><span>Duplicate</span><kbd>⌘ D</kbd></button>
           <button type="button" onClick={() => { emitSelection({ nodeIds: value.nodes.map((node) => node.id), edgeIds: value.edges.map((edge) => edge.id) }); closeContextMenu() }}><span>Select all</span><kbd>⌘ A</kbd></button>
           <div className="minucanvas-context-menu__separator" />
+          <button type="button" onClick={() => { setExportOptions((options) => ({ ...options, area: selection.nodeIds.length > 0 || selection.edgeIds.length > 0 ? 'selection' : 'canvas' })); setExportDialogOpen(true); closeContextMenu() }}><span>Export…</span></button>
+          <div className="minucanvas-context-menu__separator" />
           <button type="button" onClick={() => { groupCurrentSelection(); closeContextMenu() }} disabled={readOnly || selection.nodeIds.length < 2}><span>Group selection</span><kbd>⌘ G</kbd></button>
           <button type="button" onClick={() => { ungroupCurrentSelection(); closeContextMenu() }} disabled={readOnly || selection.nodeIds.length === 0}><span>Ungroup</span><kbd>⇧⌘ G</kbd></button>
+          <button type="button" onClick={() => { setSelectionLocked(true); closeContextMenu() }} disabled={readOnly || selection.nodeIds.length === 0}><span>Lock</span></button>
+          <button type="button" onClick={() => { setSelectionLocked(false); closeContextMenu() }} disabled={readOnly || selection.nodeIds.length === 0}><span>Unlock</span></button>
+          <div className="minucanvas-context-menu__submenu">
+            <button type="button" disabled={readOnly || !selection.nodeIds.some((id) => nodeById.get(id)?.type === 'image')}><span>Image size</span><kbd>›</kbd></button>
+            <div className="minucanvas-context-menu minucanvas-context-menu__submenu-panel" role="menu">
+              <button type="button" onClick={() => { resizeSelectedImages(0.25); closeContextMenu() }}><span>25%</span></button>
+              <button type="button" onClick={() => { resizeSelectedImages(0.5); closeContextMenu() }}><span>50%</span></button>
+              <button type="button" onClick={() => { resizeSelectedImages(1); closeContextMenu() }}><span>100%</span></button>
+            </div>
+          </div>
           <div className="minucanvas-context-menu__separator" />
-          <div className="minucanvas-context-menu__label">Change order</div>
-          <button type="button" onClick={() => { bringCurrentSelectionToFront(); closeContextMenu() }} disabled={readOnly || selection.nodeIds.length === 0}><span>Bring to front</span><kbd>⌘ ]</kbd></button>
-          <button type="button" onClick={() => { sendCurrentSelectionToBack(); closeContextMenu() }} disabled={readOnly || selection.nodeIds.length === 0}><span>Send to back</span><kbd>⌘ [</kbd></button>
-          <div className="minucanvas-context-menu__separator" />
+          <div className="minucanvas-context-menu__submenu">
+            <button type="button" disabled={readOnly || selection.nodeIds.length === 0}><span>Change order</span><kbd>›</kbd></button>
+            <div className="minucanvas-context-menu minucanvas-context-menu__submenu-panel" role="menu">
+              <button type="button" onClick={() => { bringCurrentSelectionToFront(); closeContextMenu() }}><span>Bring to front</span><kbd>⌘ ]</kbd></button>
+              <button type="button" onClick={() => { bringCurrentSelectionForward(); closeContextMenu() }}><span>Bring forward</span></button>
+              <button type="button" onClick={() => { sendCurrentSelectionBackward(); closeContextMenu() }}><span>Send backward</span></button>
+              <button type="button" onClick={() => { sendCurrentSelectionToBack(); closeContextMenu() }}><span>Send to back</span><kbd>⌘ [</kbd></button>
+            </div>
+          </div>
           <div className="minucanvas-context-menu__submenu">
             <button type="button" disabled={readOnly || selection.nodeIds.length < 2}><span>Align</span><kbd>›</kbd></button>
             <div className="minucanvas-context-menu minucanvas-context-menu__submenu-panel" role="menu">

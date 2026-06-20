@@ -108,6 +108,10 @@ export default function App() {
   const activeThemeUrl = theme === 'base' ? null : THEME_URLS[theme]
   const serialized = useMemo(() => JSON.stringify(document, null, 2), [document])
 
+  async function handleDemoUpload(file: File) {
+    return URL.createObjectURL(file)
+  }
+
   return (
     <div className={`app app--theme-${theme}`}>
       {activeThemeUrl ? <link rel="stylesheet" href={activeThemeUrl} /> : null}
@@ -172,6 +176,8 @@ export default function App() {
             autoFit
             autoFocus
             getNodeDefaults={() => ({})}
+            onUpload={handleDemoUpload}
+            onExternalContentWarning={(warning) => console.warn(warning.message, warning)}
           />
         </section>
 

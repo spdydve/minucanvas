@@ -19,7 +19,7 @@ export interface CanvasStyleToolbarProps<NodeExtra extends Record<string, unknow
 type Panel = 'shape' | 'color' | 'line' | 'font' | null
 type StyleTarget = 'nodes' | 'edges' | 'both'
 
-const SHAPES: CanvasShape[] = ['rectangle', 'ellipse', 'diamond', 'pill', 'parallelogram', 'hexagon']
+const SHAPES: CanvasShape[] = ['text', 'rectangle', 'ellipse', 'diamond', 'pill', 'parallelogram', 'hexagon']
 const STROKE_STYLES: CanvasStrokeStyle[] = ['solid', 'dashed', 'dotted', 'sketch']
 const LINE_WIDTHS = [1, 1.5, 2.5, 4]
 const FONT_SIZES = [
@@ -39,6 +39,7 @@ function mixedValue<T>(values: T[], fallback: T): T | '' {
 }
 
 function ShapeIcon({ shape }: { shape: CanvasShape }) {
+  if (shape === 'text') return <path d="M6 8V5h16v3M14 5v18M10 23h8" />
   if (shape === 'ellipse') return <ellipse cx="14" cy="14" rx="8" ry="7" />
   if (shape === 'diamond') return <path d="M14 5l9 9-9 9-9-9 9-9z" />
   if (shape === 'pill') return <rect x="6" y="9" width="16" height="10" rx="5" />

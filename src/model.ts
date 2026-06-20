@@ -25,6 +25,7 @@ export function cloneCanvas<NodeExtra extends Record<string, unknown>, EdgeExtra
 }
 
 export function shapeForTool(tool: CanvasTool): CanvasShape {
+  if (tool === 'text') return 'text'
   if (tool === 'diamond') return 'diamond'
   if (tool === 'ellipse') return 'ellipse'
   if (tool === 'pill') return 'pill'
@@ -62,6 +63,7 @@ export function createCanvasNode<NodeExtra extends Record<string, unknown> = Rec
     shape: partial.shape ?? (type === 'group' ? 'rounded-rectangle' : 'rounded-rectangle'),
     style: partial.style,
     groupId: partial.groupId,
+    locked: partial.locked,
   } as CanvasNode<NodeExtra>
 
   return node
@@ -109,7 +111,7 @@ export function deleteSelection<NodeExtra extends Record<string, unknown>, EdgeE
   }
   const edgeIds = new Set(selection.edgeIds)
   return {
-    nodes: document.nodes.filter((node) => !nodeIds.has(node.id)),
+    nodes: document.nodes.filter((node) => node.locked || !nodeIds.has(node.id)),
     edges: document.edges.filter(
       (edge) => !edgeIds.has(edge.id) && !nodeIds.has(edge.fromNode) && !nodeIds.has(edge.toNode),
     ),
@@ -219,6 +221,40 @@ export function ungroupSelection<NodeExtra extends Record<string, unknown>, Edge
       }),
     edges: document.edges,
   }
+}
+
+export function bringSelectionForward<NodeExtra extends Record<string, unknown>, EdgeExtra extends Record<string, unknown>>(
+  document: JsonCanvasDocument<NodeExtra, EdgeExtra>,
+  selection: CanvasSelection,
+): JsonCanvasDocument<NodeExtra, EdgeExtra> {
+  const selected = new Set(selection.nodeIds)
+  const nodes = [...document.nodes]
+  for (let index = nodes.length - 2; index >= 0; index -= 1) {
+    const node = nodes[index]
+    const next = nodes[index + 1]
+    if (node && next && selected.has(node.id) && !selected.has(next.id)) {
+      nodes[index] = next
+      nodes[index + 1] = node
+    }
+  }
+  return { ...document, nodes }
+}
+
+export function sendSelectionBackward<NodeExtra extends Record<string, unknown>, EdgeExtra extends Record<string, unknown>>(
+  document: JsonCanvasDocument<NodeExtra, EdgeExtra>,
+  selection: CanvasSelection,
+): JsonCanvasDocument<NodeExtra, EdgeExtra> {
+  const selected = new Set(selection.nodeIds)
+  const nodes = [...document.nodes]
+  for (let index = 1; index < nodes.length; index += 1) {
+    const node = nodes[index]
+    const previous = nodes[index - 1]
+    if (node && previous && selected.has(node.id) && !selected.has(previous.id)) {
+      nodes[index - 1] = node
+      nodes[index] = previous
+    }
+  }
+  return { ...document, nodes }
 }
 
 export function bringSelectionToFront<NodeExtra extends Record<string, unknown>, EdgeExtra extends Record<string, unknown>>(

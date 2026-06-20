@@ -2,7 +2,7 @@ import type { CSSProperties, ReactNode } from 'react'
 
 export type JsonCanvasSide = 'top' | 'right' | 'bottom' | 'left'
 export type JsonCanvasEdgeEnd = 'none' | 'arrow'
-export type JsonCanvasNodeType = 'text' | 'file' | 'link' | 'group'
+export type JsonCanvasNodeType = 'text' | 'file' | 'link' | 'group' | 'image'
 
 /**
  * The base JSON Canvas document shape. Extra properties are allowed by design so
@@ -14,6 +14,7 @@ export interface JsonCanvasDocument<NodeExtra extends Record<string, unknown> = 
 }
 
 export type CanvasShape =
+  | 'text'
   | 'rectangle'
   | 'rounded-rectangle'
   | 'pill'
@@ -84,6 +85,9 @@ export type CanvasNode<NodeExtra extends Record<string, unknown> = Record<string
   shape?: CanvasShape
   style?: CanvasNodeStyle
   groupId?: string
+  locked?: boolean
+  imageWidth?: number
+  imageHeight?: number
 }
 
 export type CanvasEdge<EdgeExtra extends Record<string, unknown> = Record<string, unknown>> = EdgeExtra & {
@@ -153,14 +157,24 @@ export interface CanvasHandle<NodeExtra extends Record<string, unknown> = Record
   createEdge: (fromNode: string, toNode: string, partial?: Partial<CanvasEdge<EdgeExtra>>) => CanvasEdge<EdgeExtra> | null
   groupSelection: () => CanvasNode<NodeExtra> | null
   ungroupSelection: () => void
+  bringSelectionForward: () => void
+  sendSelectionBackward: () => void
   bringSelectionToFront: () => void
   sendSelectionToBack: () => void
   alignSelection: (alignment: CanvasAlignment) => void
   distributeSelection: (distribution: CanvasDistribution) => void
+  exportSvg: () => string
+  exportPng: () => Promise<string>
   zoomIn: () => void
   zoomOut: () => void
   resetView: () => void
   fitView: () => void
+}
+
+export interface CanvasExternalContentWarning {
+  code: 'missing-upload-handler' | 'inline-image-fallback' | 'unsupported-file'
+  message: string
+  file?: File
 }
 
 export interface MinuCanvasProps<NodeExtra extends Record<string, unknown> = Record<string, unknown>, EdgeExtra extends Record<string, unknown> = Record<string, unknown>> {
@@ -189,6 +203,9 @@ export interface MinuCanvasProps<NodeExtra extends Record<string, unknown> = Rec
   renderNode?: (context: CanvasRenderNodeContext<NodeExtra>) => ReactNode
   renderEdgeLabel?: (context: CanvasRenderEdgeContext<EdgeExtra>) => ReactNode
   getNodeDefaults?: (tool: CanvasTool, point: { x: number; y: number }) => Partial<CanvasNode<NodeExtra>>
+  onUpload?: (file: File) => Promise<string>
+  allowInlineImages?: boolean
+  onExternalContentWarning?: (warning: CanvasExternalContentWarning) => void
   grid?: boolean
   snapToGrid?: boolean
   gridSize?: number
