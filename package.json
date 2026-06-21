@@ -13,7 +13,7 @@
       "require": "./dist/index.cjs"
     },
     "./syntax": {
-      "types": "./dist/syntax/index.d.ts",
+      "types": "./dist/syntax.d.ts",
       "import": "./dist/syntax.js",
       "require": "./dist/syntax.cjs"
     },
@@ -33,11 +33,20 @@
     "dev": "vite dev --config vite.dev.config.ts",
     "build": "tsc -p tsconfig.build.json && vite build",
     "build:release": "npm run clean && npm run build",
+    "prepare": "npm run build",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
-    "check:package": "npm run typecheck && npm test && npm run build && npm pack --dry-run"
+    "version:patch": "npm version patch --no-git-tag-version",
+    "version:minor": "npm version minor --no-git-tag-version",
+    "version:major": "npm version major --no-git-tag-version",
+    "verify:dist": "node scripts/verify-dist.cjs",
+    "check:package": "npm run typecheck && npm test && npm run build && npm pack --dry-run",
+    "check:release": "npm run typecheck && npm test && npm run build:release && npm run verify:dist && npm pack --dry-run",
+    "release:tag": "node scripts/release.cjs",
+    "release:tag:dry-run": "node scripts/release.cjs --dry-run",
+    "release:tag:push": "node scripts/release.cjs --push"
   },
   "peerDependencies": {
     "react": ">=18.0.0",

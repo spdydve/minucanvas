@@ -40,7 +40,7 @@ import '@dpklabs/minucanvas/theme.css'
 const initial: JsonCanvasDocument = {
   nodes: [
     { id: 'a', type: 'text', text: 'Start', x: 0, y: 0, width: 160, height: 80, shape: 'pill' },
-    { id: 'b', type: 'text', text: 'Done?', x: 260, y: -30, width: 160, height: 140, shape: 'diamond' },
+    { id: 'b', type: 'text', text: 'Done?', x: 260, y: -40, width: 240, height: 160, shape: 'diamond' },
   ],
   edges: [{ id: 'ab', fromNode: 'a', toNode: 'b', toEnd: 'arrow' }],
 }
@@ -110,8 +110,9 @@ Keyboard equivalent: select one shape and press `Cmd/Ctrl + ArrowUp/Right/Down/L
 - `D` diamond
 - `O` ellipse
 - `P` pill
-- Arrow keys navigate between nearby shapes/connectors
-- `Tab` / `Shift+Tab` cycle selection
+- Arrow keys move selected nodes
+- `Alt/Option+Arrow` navigate between nearby shapes/connectors
+- `Tab` opens the selected node shape switcher
 - `Enter` / `F2` edit selected label
 - `Delete` / `Backspace` delete selection
 - `Cmd/Ctrl+D` duplicate selection
@@ -145,6 +146,36 @@ See [`docs/mvp-usage.md`](docs/mvp-usage.md) for current editing behavior, group
 See [`docs/minucanvas-json.md`](docs/minucanvas-json.md) for the MinuCanvas JSON persistence format and JSON Canvas compatibility notes.
 
 See [`docs/minu-diagram-syntax.md`](docs/minu-diagram-syntax.md) for the proposed LLM-friendly diagram-as-code syntax. Parser/compiler helpers are available from `@dpklabs/minucanvas/syntax`.
+
+## Releases
+
+For reproducible GitHub-based installs, use release tags rather than a branch:
+
+```bash
+npm install github:spdydve/minucanvas#v0.1.0
+```
+
+Choose a version bump:
+
+```bash
+npm run version:patch
+npm run version:minor
+npm run version:major
+```
+
+These update `package.json` and `package-lock.json` without creating a git tag. Commit the version bump, then dry-run release validation:
+
+```bash
+npm run release:tag:dry-run
+```
+
+Create and push the annotated tag when validation passes:
+
+```bash
+npm run release:tag:push
+```
+
+The release script requires a clean worktree, verifies the tag does not already exist, runs `npm run check:release`, creates `v<package.json version>`, and optionally pushes the current branch and tag.
 
 ## Extensibility
 
