@@ -7,9 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
-  type ClipboardEvent,
   type CSSProperties,
-  type DragEvent,
   type ForwardedRef,
   type KeyboardEvent,
   type MouseEvent,
@@ -197,6 +195,31 @@ function isImageUrl(value: string): boolean {
 
 function isImageFile(file: File): boolean {
   return file.type.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg)$/i.test(file.name)
+}
+
+function filesFromDataTransfer(dataTransfer: DataTransfer): File[] {
+  const files = Array.from(dataTransfer.files)
+  if (files.length > 0) return files
+  return Array.from(dataTransfer.items)
+    .filter((item) => item.kind === 'file')
+    .map((item) => item.getAsFile())
+    .filter((file): file is File => Boolean(file))
+}
+
+function linkLabelFromUrl(value: string): string {
+  try {
+    const url = new URL(value)
+    return url.hostname.replace(/^www\./, '')
+  } catch {
+    return value
+  }
+}
+
+function linkNodeSize(label: string): { width: number; height: number } {
+  return {
+    width: Math.max(72, Math.min(320, Math.ceil(label.length * 8.5 + 34))),
+    height: 36,
+  }
 }
 
 function fileToDataUrl(file: File): Promise<string> {
@@ -486,14 +509,20 @@ function DefaultNodeContent({ node, editing }: { node: CanvasNode; editing: bool
     return <span className="minucanvas-node__muted">📄 {label}</span>
   }
   if (node.type === 'link') {
-    return <span className="minucanvas-node__muted">↗ {label}</span>
+    const url = node.url ?? label
+    return <span className="minucanvas-node__link"><span className="minucanvas-node__link-icon">↗</span><span>{node.label ?? linkLabelFromUrl(url)}</span></span>
   }
   if (node.type === 'group') {
     return <span className="minucanvas-node__group-label">{node.label ?? label}</span>
   }
   if (node.type === 'image') {
     const src = node.file ?? node.url ?? ''
-    return src ? <img className="minucanvas-node__image" src={src} alt={node.label ?? label} draggable={false} /> : <span className="minucanvas-node__muted">Image</span>
+    return (
+      <>
+        {src ? <img className="minucanvas-node__image" src={src} alt={node.label ?? label} draggable={false} onError={(event) => event.currentTarget.closest('.minucanvas-node__content')?.classList.add('minucanvas-node__content--image-error')} /> : <span className="minucanvas-node__muted">Image</span>}
+        {node.imageStatus ? <span className={`minucanvas-node__image-status minucanvas-node__image-status--${node.imageStatus}`}>{node.imageStatus === 'uploading' ? 'Uploading…' : 'Image failed'}</span> : null}
+      </>
+    )
   }
   return <span>{label}</span>
 }
@@ -523,6 +552,7 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
     renderEdgeLabel,
     getNodeDefaults,
     onUpload,
+    onResolveLink,
     allowInlineImages = false,
     onExternalContentWarning,
     grid = true,
@@ -534,6 +564,7 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
 ) {
   const rootRef = useRef<HTMLDivElement>(null)
   const contextMenuRef = useRef<HTMLDivElement>(null)
+  const imageReplaceInputRef = useRef<HTMLInputElement>(null)
   const dragRef = useRef<DragState<NodeExtra>>(null)
   const addSequenceRef = useRef<{ sourceNodeId: string; direction: AddDirection; lastNodeId: string } | null>(null)
   const clipboardRef = useRef<CanvasClipboardPayload<NodeExtra, EdgeExtra> | null>(null)
@@ -542,6 +573,7 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
   const undoTransactionRef = useRef<JsonCanvasDocument<NodeExtra, EdgeExtra> | null>(null)
   const undoTransactionPushedRef = useRef(false)
   const autoFitDoneRef = useRef(false)
+  const valueRef = useRef(value)
   const [, forcePointerFrame] = useState(0)
   const [viewport, setViewportState] = useState<CanvasViewport>(initialViewport ?? { x: 0, y: 0, zoom: 1 })
   const [localTool, setLocalTool] = useState<CanvasTool>(defaultTool)
@@ -561,6 +593,10 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
     edgeIds: selectedEdgeIds ?? localSelection.edgeIds,
   })
   const nodeById = useMemo(() => new Map(value.nodes.map((node) => [node.id, node])), [value.nodes])
+
+  useEffect(() => {
+    valueRef.current = value
+  }, [value])
 
   const setViewport = useCallback(
     (next: CanvasViewport) => {
@@ -647,6 +683,9 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
     }, 'update-node')
   }, [emitChange, readOnly, selection.nodeIds, value])
 
+  const selectedImageNode = useMemo(() => selection.nodeIds.map((id) => nodeById.get(id)).find((node) => node?.type === 'image') ?? null, [nodeById, selection.nodeIds])
+  const selectedLinkNode = useMemo(() => selection.nodeIds.map((id) => nodeById.get(id)).find((node) => node?.type === 'link') ?? null, [nodeById, selection.nodeIds])
+
   const resizeSelectedImages = useCallback((scale: number) => {
     if (readOnly || selection.nodeIds.length === 0) return
     const next = {
@@ -660,6 +699,53 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
     }
     emitChange(next, 'update-node')
   }, [emitChange, readOnly, selection.nodeIds, value])
+
+  const openSelectedExternalNode = useCallback(() => {
+    const target = selectedImageNode?.file ?? selectedImageNode?.url ?? selectedLinkNode?.url
+    if (target) window.open(target, '_blank', 'noopener,noreferrer')
+  }, [selectedImageNode, selectedLinkNode])
+
+  const replaceSelectedImage = useCallback(async (file: File) => {
+    if (readOnly || !selectedImageNode || !isImageFile(file)) return
+    const previewUrl = URL.createObjectURL(file)
+    const natural = await imageSize(previewUrl).catch(() => ({ width: selectedImageNode.width, height: selectedImageNode.height }))
+    const size = fitImageSize(natural.width, natural.height)
+    emitChange({
+      ...value,
+      nodes: value.nodes.map((node) => node.id === selectedImageNode.id
+        ? ({ ...node, file: previewUrl, label: file.name, width: size.width, height: size.height, imageWidth: natural.width, imageHeight: natural.height, imageStatus: onUpload ? 'uploading' : undefined } as CanvasNode<NodeExtra>)
+        : node),
+    }, 'update-node')
+
+    if (!onUpload) {
+      if (!allowInlineImages) onExternalContentWarning?.({ code: 'missing-upload-handler', message: 'Replacing images requires an onUpload handler.', file })
+      return
+    }
+
+    try {
+      const url = await onUpload(file)
+      URL.revokeObjectURL(previewUrl)
+      const current = valueRef.current
+      onChange({
+        ...current,
+        nodes: current.nodes.map((node) => {
+          if (node.id !== selectedImageNode.id) return node
+          const next = { ...node, file: url }
+          delete next.imageStatus
+          delete next.imageError
+          return next
+        }),
+      }, { reason: 'update-node' })
+    } catch (error) {
+      const current = valueRef.current
+      onChange({
+        ...current,
+        nodes: current.nodes.map((node) => node.id === selectedImageNode.id
+          ? ({ ...node, imageStatus: 'failed', imageError: error instanceof Error ? error.message : 'Upload failed' } as CanvasNode<NodeExtra>)
+          : node),
+      }, { reason: 'update-node' })
+    }
+  }, [allowInlineImages, emitChange, onChange, onExternalContentWarning, onUpload, readOnly, selectedImageNode, value])
 
   const duplicateCurrentSelection = useCallback(() => {
     if (readOnly || selection.nodeIds.length === 0) return
@@ -1558,19 +1644,70 @@ ${nodeMarkup}
         onExternalContentWarning?.({ code: 'unsupported-file', message: `Unsupported file type: ${input.file.type || input.file.name}`, file: input.file })
         return false
       }
-      let src: string | null = null
-      if (onUpload) {
-        src = await onUpload(input.file)
-      } else if (allowInlineImages) {
+
+      const previewUrl = URL.createObjectURL(input.file)
+      const natural = await imageSize(previewUrl).catch(() => ({ width: 640, height: 360 }))
+      const size = fitImageSize(natural.width, natural.height)
+      let src = previewUrl
+      if (!onUpload && allowInlineImages) {
         onExternalContentWarning?.({ code: 'inline-image-fallback', message: 'No upload handler configured. Inlining image as a data URL.', file: input.file })
         src = await fileToDataUrl(input.file)
-      } else {
+        URL.revokeObjectURL(previewUrl)
+      } else if (!onUpload && !allowInlineImages) {
+        URL.revokeObjectURL(previewUrl)
         onExternalContentWarning?.({ code: 'missing-upload-handler', message: 'Pasted images require an onUpload handler.', file: input.file })
         return false
       }
-      const natural = await imageSize(src).catch(() => ({ width: 640, height: 360 }))
-      const size = fitImageSize(natural.width, natural.height)
-      partial = { type: 'image', file: src, label: input.file.name, shape: 'rectangle', width: size.width, height: size.height, imageWidth: natural.width, imageHeight: natural.height } as Partial<CanvasNode<NodeExtra>>
+
+      const node = createCanvasNode<NodeExtra>({
+        type: 'image',
+        file: src,
+        label: input.file.name,
+        shape: 'rectangle',
+        width: size.width,
+        height: size.height,
+        imageWidth: natural.width,
+        imageHeight: natural.height,
+        imageStatus: onUpload ? 'uploading' : undefined,
+        x: point.x - size.width / 2,
+        y: point.y - size.height / 2,
+      } as Partial<CanvasNode<NodeExtra>>)
+      const documentWithPreview = { ...value, nodes: [...value.nodes, node] }
+      emitChange(documentWithPreview, 'create-node')
+      emitSelection({ nodeIds: [node.id], edgeIds: [] })
+      setActiveTool('select')
+
+      if (onUpload) {
+        void onUpload(input.file)
+          .then((url) => {
+            URL.revokeObjectURL(previewUrl)
+            const current = valueRef.current.nodes.some((currentNode) => currentNode.id === node.id)
+              ? valueRef.current
+              : documentWithPreview
+            onChange({
+              ...current,
+              nodes: current.nodes.map((currentNode) => {
+                if (currentNode.id !== node.id) return currentNode
+                const next = { ...currentNode, file: url }
+                delete next.imageStatus
+                delete next.imageError
+                return next
+              }),
+            }, { reason: 'update-node' })
+          })
+          .catch((error: unknown) => {
+            const current = valueRef.current.nodes.some((currentNode) => currentNode.id === node.id)
+              ? valueRef.current
+              : documentWithPreview
+            onChange({
+              ...current,
+              nodes: current.nodes.map((currentNode) => currentNode.id === node.id
+                ? ({ ...currentNode, imageStatus: 'failed', imageError: error instanceof Error ? error.message : 'Upload failed' } as CanvasNode<NodeExtra>)
+                : currentNode),
+            }, { reason: 'update-node' })
+          })
+      }
+      return true
     } else if (input.text) {
       const text = input.text.trim()
       if (!text) return false
@@ -1580,7 +1717,37 @@ ${nodeMarkup}
           const size = fitImageSize(natural.width, natural.height)
           partial = { type: 'image', file: text, label: text.split('/').pop() ?? text, shape: 'rectangle', width: size.width, height: size.height, imageWidth: natural.width, imageHeight: natural.height } as Partial<CanvasNode<NodeExtra>>
         } else {
-          partial = { type: 'link', url: text, label: text, shape: 'rounded-rectangle', width: 260, height: 90 } as Partial<CanvasNode<NodeExtra>>
+          const label = linkLabelFromUrl(text)
+          const size = linkNodeSize(label)
+          const node = createCanvasNode<NodeExtra>({
+            type: 'link',
+            url: text,
+            label,
+            shape: 'text',
+            width: size.width,
+            height: size.height,
+            x: point.x - size.width / 2,
+            y: point.y - size.height / 2,
+          } as Partial<CanvasNode<NodeExtra>>)
+          emitChange({ ...value, nodes: [...value.nodes, node] }, 'create-node')
+          emitSelection({ nodeIds: [node.id], edgeIds: [] })
+          setActiveTool('select')
+          if (onResolveLink) {
+            void onResolveLink(text).then((metadata) => {
+              const resolvedLabel = metadata?.label
+              if (!resolvedLabel) return
+              const current = valueRef.current.nodes.some((currentNode) => currentNode.id === node.id) ? valueRef.current : { ...value, nodes: [...value.nodes, node] }
+              onChange({
+                ...current,
+                nodes: current.nodes.map((currentNode) => {
+                  if (currentNode.id !== node.id) return currentNode
+                  const size = linkNodeSize(resolvedLabel)
+                  return { ...currentNode, label: resolvedLabel, width: size.width, height: size.height }
+                }),
+              }, { reason: 'update-node' })
+            }).catch(() => undefined)
+          }
+          return true
         }
       } else {
         partial = { type: 'text', text, shape: 'text', width: 240, height: Math.max(48, Math.min(180, text.split('\n').length * 28 + 20)) } as Partial<CanvasNode<NodeExtra>>
@@ -1597,7 +1764,7 @@ ${nodeMarkup}
     emitSelection({ nodeIds: [node.id], edgeIds: [] })
     setActiveTool('select')
     return true
-  }, [allowInlineImages, emitChange, emitSelection, getNodeDefaults, gridSize, onExternalContentWarning, onUpload, readOnly, setActiveTool, snapToGrid, value])
+  }, [allowInlineImages, emitChange, emitSelection, gridSize, onChange, onExternalContentWarning, onResolveLink, onUpload, readOnly, setActiveTool, snapToGrid, value])
 
   const defaultExternalPastePoint = useCallback((): Point => {
     const root = rootRef.current
@@ -1606,8 +1773,9 @@ ${nodeMarkup}
     return clientToCanvas({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }, rect, viewport)
   }, [viewport])
 
-  const handlePaste = useCallback((event: ClipboardEvent<HTMLDivElement>) => {
+  const handlePaste = useCallback((event: ClipboardEvent) => {
     if (readOnly || isEditableTarget(event.target)) return
+    if (!event.clipboardData) return
     const items = Array.from(event.clipboardData.items)
     const fileItems = items.filter((item) => item.kind === 'file')
     const file = fileItems.map((item) => item.getAsFile()).find((item): item is File => Boolean(item && isImageFile(item)))
@@ -1616,6 +1784,18 @@ ${nodeMarkup}
       void createExternalNodeAt({ file, point: defaultExternalPastePoint() })
       return
     }
+    const html = event.clipboardData.getData('text/html')
+    if (html) {
+      const doc = new DOMParser().parseFromString(html, 'text/html')
+      const imageSrc = doc.querySelector('img[src]')?.getAttribute('src')
+      const linkHref = doc.querySelector('a[href]')?.getAttribute('href')
+      const external = imageSrc || linkHref
+      if (external) {
+        event.preventDefault()
+        void createExternalNodeAt({ text: external, point: defaultExternalPastePoint() })
+        return
+      }
+    }
     const text = event.clipboardData.getData('text/plain')
     if (text) {
       event.preventDefault()
@@ -1623,18 +1803,26 @@ ${nodeMarkup}
     }
   }, [createExternalNodeAt, defaultExternalPastePoint, readOnly])
 
-  const handleDragOver = useCallback((event: DragEvent<HTMLDivElement>) => {
-    if (readOnly) return
-    event.preventDefault()
-    event.dataTransfer.dropEffect = 'copy'
-  }, [readOnly])
-
-  const handleDrop = useCallback((event: DragEvent<HTMLDivElement>) => {
+  const handleDragOver = useCallback((event: DragEvent) => {
     if (readOnly) return
     const root = rootRef.current
     if (!root) return
-    const point = clientToCanvas({ x: event.clientX, y: event.clientY }, root.getBoundingClientRect(), viewport)
-    const file = Array.from(event.dataTransfer.files).find((item) => isImageFile(item))
+    const rect = root.getBoundingClientRect()
+    const inside = event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom
+    if (!inside) return
+    event.preventDefault()
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
+  }, [readOnly])
+
+  const handleDrop = useCallback((event: DragEvent) => {
+    if (readOnly) return
+    const root = rootRef.current
+    if (!root || !event.dataTransfer) return
+    const rect = root.getBoundingClientRect()
+    const inside = event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom
+    if (!inside) return
+    const point = clientToCanvas({ x: event.clientX, y: event.clientY }, rect, viewport)
+    const file = filesFromDataTransfer(event.dataTransfer).find((item) => isImageFile(item))
     if (file) {
       event.preventDefault()
       void createExternalNodeAt({ file, point })
@@ -1676,8 +1864,18 @@ ${nodeMarkup}
     const root = rootRef.current
     if (!root) return
     root.addEventListener('wheel', handleWheel, { passive: false })
-    return () => root.removeEventListener('wheel', handleWheel)
-  }, [handleWheel])
+    document.addEventListener('paste', handlePaste)
+    document.addEventListener('dragenter', handleDragOver)
+    document.addEventListener('dragover', handleDragOver)
+    document.addEventListener('drop', handleDrop)
+    return () => {
+      root.removeEventListener('wheel', handleWheel)
+      document.removeEventListener('paste', handlePaste)
+      document.removeEventListener('dragenter', handleDragOver)
+      document.removeEventListener('dragover', handleDragOver)
+      document.removeEventListener('drop', handleDrop)
+    }
+  }, [handleDragOver, handleDrop, handlePaste, handleWheel])
 
   const handleKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
     if (!shortcuts || isEditableTarget(event.target)) return
@@ -1897,10 +2095,6 @@ ${nodeMarkup}
       onKeyDown={handleKeyDown}
       onKeyUp={handleKeyUp}
       onContextMenu={handleContextMenu}
-      onPaste={handlePaste}
-      onDragEnter={handleDragOver}
-      onDragOver={handleDragOver}
-      onDrop={handleDrop}
       onBlur={() => setPanningModifierActive(false)}
       onPointerDown={handleSurfacePointerDown}
       onPointerMove={handlePointerMove}
@@ -2095,6 +2289,11 @@ ${nodeMarkup}
                   emitSelection({ nodeIds: [], edgeIds: [] })
                   return
                 }
+                if (node.type === 'link' || node.type === 'image') {
+                  const target = node.type === 'link' ? node.url : node.file ?? node.url
+                  if (target) window.open(target, '_blank', 'noopener,noreferrer')
+                  return
+                }
                 if (node.groupId && activeGroupId !== node.groupId) {
                   setActiveGroupId(node.groupId)
                   emitSelection({ nodeIds: [node.id], edgeIds: [] })
@@ -2279,6 +2478,17 @@ ${nodeMarkup}
           })}
         </svg>
       </div>
+      <input
+        ref={imageReplaceInputRef}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0]
+          event.currentTarget.value = ''
+          if (file) void replaceSelectedImage(file)
+        }}
+      />
       {exportDialogOpen ? (
         <div className="minucanvas-export-backdrop" role="presentation" onPointerDown={() => setExportDialogOpen(false)}>
           <div className="minucanvas-export-dialog" role="dialog" aria-modal="true" aria-label="Export" onPointerDown={(event) => event.stopPropagation()}>
@@ -2340,6 +2550,7 @@ ${nodeMarkup}
         <div
           ref={contextMenuRef}
           className="minucanvas-context-menu"
+          data-submenu-side={rootRef.current && contextMenu.x > rootRef.current.clientWidth - 460 ? 'left' : 'right'}
           style={{ left: contextMenu.x, top: contextMenu.y }}
           role="menu"
           onPointerDown={(event) => event.stopPropagation()}
@@ -2357,6 +2568,8 @@ ${nodeMarkup}
           <button type="button" onClick={() => { ungroupCurrentSelection(); closeContextMenu() }} disabled={readOnly || selection.nodeIds.length === 0}><span>Ungroup</span><kbd>⇧⌘ G</kbd></button>
           <button type="button" onClick={() => { setSelectionLocked(true); closeContextMenu() }} disabled={readOnly || selection.nodeIds.length === 0}><span>Lock</span></button>
           <button type="button" onClick={() => { setSelectionLocked(false); closeContextMenu() }} disabled={readOnly || selection.nodeIds.length === 0}><span>Unlock</span></button>
+          <button type="button" onClick={() => { openSelectedExternalNode(); closeContextMenu() }} disabled={!selectedImageNode && !selectedLinkNode}><span>{selectedImageNode ? 'Open image' : 'Open link'}</span></button>
+          <button type="button" onClick={() => { imageReplaceInputRef.current?.click(); closeContextMenu() }} disabled={readOnly || !selectedImageNode}><span>Replace image…</span></button>
           <div className="minucanvas-context-menu__submenu">
             <button type="button" disabled={readOnly || !selection.nodeIds.some((id) => nodeById.get(id)?.type === 'image')}><span>Image size</span><kbd>›</kbd></button>
             <div className="minucanvas-context-menu minucanvas-context-menu__submenu-panel" role="menu">

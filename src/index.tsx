@@ -38,6 +38,20 @@ export {
   sideForPoint,
 } from './geometry'
 export { defaultCanvasShortcuts, toolFromKey } from './shortcuts'
+export { compileMinuDiagramSyntax, compileParsedMinuDiagram, parseMinuDiagramSyntax } from './syntax'
+export type {
+  MinuDiagramCompileOptions,
+  MinuDiagramCompileResult,
+  MinuDiagramConnection,
+  MinuDiagramConnectionOperator,
+  MinuDiagramDiagnostic,
+  MinuDiagramDiagnosticSeverity,
+  MinuDiagramDirection,
+  MinuDiagramGroup,
+  MinuDiagramNode,
+  ParsedMinuDiagram,
+  SupportedMinuDiagramShape,
+} from './syntax'
 export type {
   CanvasAlignment,
   CanvasChangeContext,

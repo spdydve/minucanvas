@@ -88,6 +88,8 @@ export type CanvasNode<NodeExtra extends Record<string, unknown> = Record<string
   locked?: boolean
   imageWidth?: number
   imageHeight?: number
+  imageStatus?: 'uploading' | 'failed'
+  imageError?: string
 }
 
 export type CanvasEdge<EdgeExtra extends Record<string, unknown> = Record<string, unknown>> = EdgeExtra & {
@@ -204,6 +206,7 @@ export interface MinuCanvasProps<NodeExtra extends Record<string, unknown> = Rec
   renderEdgeLabel?: (context: CanvasRenderEdgeContext<EdgeExtra>) => ReactNode
   getNodeDefaults?: (tool: CanvasTool, point: { x: number; y: number }) => Partial<CanvasNode<NodeExtra>>
   onUpload?: (file: File) => Promise<string>
+  onResolveLink?: (url: string) => Promise<{ label?: string } | null>
   allowInlineImages?: boolean
   onExternalContentWarning?: (warning: CanvasExternalContentWarning) => void
   grid?: boolean

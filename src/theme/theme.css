@@ -402,12 +402,54 @@
 }
 
 .minucanvas-node--type-image .minucanvas-node__content {
+  position: relative;
   width: 100%;
   height: 100%;
   max-height: none;
   border-radius: inherit;
+  background-color: color-mix(in srgb, var(--mc-canvas-surface) 60%, transparent);
+  background-image:
+    linear-gradient(45deg, color-mix(in srgb, var(--mc-canvas-text) 10%, transparent) 25%, transparent 25%),
+    linear-gradient(-45deg, color-mix(in srgb, var(--mc-canvas-text) 10%, transparent) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, color-mix(in srgb, var(--mc-canvas-text) 10%, transparent) 75%),
+    linear-gradient(-45deg, transparent 75%, color-mix(in srgb, var(--mc-canvas-text) 10%, transparent) 75%);
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  background-size: 16px 16px;
   padding: 0;
   overflow: hidden;
+}
+
+.minucanvas-node--type-link::before {
+  display: none;
+}
+
+.minucanvas-node--type-link .minucanvas-node__content {
+  padding: 6px 8px;
+}
+
+.minucanvas-node__link {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  color: var(--mc-node-text, var(--mc-shape-text));
+}
+
+.minucanvas-node__link-icon {
+  color: var(--mc-muted, var(--mc-canvas-muted));
+}
+
+.minucanvas-node__content--image-error::after {
+  content: "Image failed";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  color: #fca5a5;
+  font-size: 12px;
+  transform: translate(-50%, -50%);
+}
+
+.minucanvas-node__content--image-error .minucanvas-node__image {
+  opacity: 0.18;
 }
 
 .minucanvas-node__image {
@@ -417,6 +459,22 @@
   object-fit: contain;
   pointer-events: none;
   user-select: none;
+}
+
+.minucanvas-node__image-status {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--mc-canvas-surface) 90%, transparent);
+  color: var(--mc-canvas-text);
+  font-size: 12px;
+  padding: 5px 9px;
+  transform: translate(-50%, -50%);
+}
+
+.minucanvas-node__image-status--failed {
+  color: #fca5a5;
 }
 
 .minucanvas-node--diamond .minucanvas-node__content,
@@ -725,6 +783,11 @@
   top: -8px;
 }
 
+.minucanvas-context-menu[data-submenu-side="left"] .minucanvas-context-menu__submenu-panel {
+  left: auto;
+  right: calc(100% + 8px);
+}
+
 .minucanvas-context-menu__submenu:hover > .minucanvas-context-menu__submenu-panel,
 .minucanvas-context-menu__submenu:focus-within > .minucanvas-context-menu__submenu-panel {
   display: grid;
@@ -737,6 +800,11 @@
   top: 0;
   width: 10px;
   height: 100%;
+}
+
+.minucanvas-context-menu[data-submenu-side="left"] .minucanvas-context-menu__submenu::after {
+  left: auto;
+  right: 100%;
 }
 
 .minucanvas-context-menu__danger {

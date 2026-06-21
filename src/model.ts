@@ -64,6 +64,10 @@ export function createCanvasNode<NodeExtra extends Record<string, unknown> = Rec
     style: partial.style,
     groupId: partial.groupId,
     locked: partial.locked,
+    imageWidth: partial.imageWidth,
+    imageHeight: partial.imageHeight,
+    imageStatus: partial.imageStatus,
+    imageError: partial.imageError,
   } as CanvasNode<NodeExtra>
 
   return node

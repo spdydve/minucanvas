@@ -138,10 +138,20 @@ Grid and snapping are also optional, and existing diagrams can be fit into view 
 <MinuCanvas grid={false} snapToGrid={false} autoFit />
 ```
 
+## MVP documentation
+
+See [`docs/mvp-usage.md`](docs/mvp-usage.md) for current editing behavior, groups, layers, export, external paste/drop, host upload hooks, and a manual QA checklist.
+
+See [`docs/minucanvas-json.md`](docs/minucanvas-json.md) for the MinuCanvas JSON persistence format and JSON Canvas compatibility notes.
+
+See [`docs/minu-diagram-syntax.md`](docs/minu-diagram-syntax.md) for the proposed LLM-friendly diagram-as-code syntax. Parser/compiler helpers are available from `@dpklabs/minucanvas/syntax`.
+
 ## Extensibility
 
 - Add service-specific properties by typing `JsonCanvasDocument<NodeExtra, EdgeExtra>`.
 - Use `renderNode` to render custom cards while keeping layout, selection, movement, and edge routing.
 - Use `getNodeDefaults` to control newly-created nodes per tool.
+- Use `onUpload` to persist pasted/dropped image files and return a durable URL.
+- Use `onResolveLink` to enrich pasted/dropped URL nodes with host-provided labels.
 - Override canvas variables like `--mc-canvas-bg`, `--mc-canvas-grid`, and `--mc-canvas-accent`.
 - Override shape variables like `--mc-shape-fill`, `--mc-shape-stroke`, `--mc-shape-text`, and `--mc-line`.

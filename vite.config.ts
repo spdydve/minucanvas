@@ -34,6 +34,7 @@ export default defineConfig({
     lib: {
       entry: {
         index: resolve(__dirname, 'src/index.tsx'),
+        syntax: resolve(__dirname, 'src/syntax/index.ts'),
       },
       name: 'MinuCanvas',
       formats: ['es', 'cjs'],

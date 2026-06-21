@@ -12,6 +12,11 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
+    "./syntax": {
+      "types": "./dist/syntax/index.d.ts",
+      "import": "./dist/syntax.js",
+      "require": "./dist/syntax.cjs"
+    },
     "./theme.css": "./dist/theme.css",
     "./themes/light.css": "./dist/themes/light.css",
     "./themes/dark.css": "./dist/themes/dark.css"
