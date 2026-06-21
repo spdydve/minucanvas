@@ -43,6 +43,7 @@ export {
   nodeCenter,
   sideForPoint,
 } from './geometry'
+export { layoutMindMap } from './mindmap'
 export { defaultCanvasShortcuts, toolFromKey } from './shortcuts'
 export { compileMinuDiagramSyntax, compileParsedMinuDiagram, parseMinuDiagramSyntax } from './syntax'
 export type {
@@ -54,6 +55,7 @@ export type {
   MinuDiagramDiagnosticSeverity,
   MinuDiagramDirection,
   MinuDiagramGroup,
+  MinuDiagramLayout,
   MinuDiagramNode,
   ParsedMinuDiagram,
   SupportedMinuDiagramShape,
@@ -86,5 +88,6 @@ export type {
   JsonCanvasSide,
   MinuCanvasProps,
 } from './types'
+export type { MindMapEdgeEnds, MindMapLayoutOptions, MindMapSide } from './mindmap'
 export type { CanvasToolbarProps } from './CanvasToolbar'
 export type { CanvasStyleToolbarProps } from './CanvasStyleToolbar'

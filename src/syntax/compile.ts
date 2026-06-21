@@ -1,4 +1,5 @@
 import { defaultEdgeConnection } from '../geometry'
+import { layoutMindMap } from '../mindmap'
 import { createCanvasEdge, createCanvasNode } from '../model'
 import type { CanvasEdge, CanvasNode, CanvasShape, JsonCanvasEdgeEnd } from '../types'
 import { parseMinuDiagramSyntax } from './parse'
@@ -42,8 +43,11 @@ export function compileParsedMinuDiagram(parsed: ParsedMinuDiagram, options: Min
   const rankGap = options.rankGap ?? 112
   const groupPadding = options.groupPadding ?? GROUP_PADDING
   const gridSize = options.gridSize === false ? null : options.gridSize ?? 20
-  const ranks = rankNodes(parsed)
-  const nodePositions = placeNodes(parsed, ranks, origin, nodeGap, rankGap, gridSize)
+  const layout = options.layout ?? parsed.layout ?? 'flow'
+  const ranks = layout === 'mindmap' ? new Map(parsed.nodes.map((node) => [node.id, 0])) : rankNodes(parsed)
+  const nodePositions = layout === 'mindmap'
+    ? new Map(parsed.nodes.map((node) => [node.id, origin]))
+    : placeNodes(parsed, ranks, origin, nodeGap, rankGap, gridSize)
 
   const nodes: CanvasNode[] = []
   const groupNodes: CanvasNode[] = []
@@ -71,7 +75,13 @@ export function compileParsedMinuDiagram(parsed: ParsedMinuDiagram, options: Min
   const nodeLookup = new Map(nodes.map((node) => [node.id, node]))
   const edges = parsed.connections.map((connection, index) => createEdge(connection, index, nodeLookup))
   const documentNodes = fitGroups([...groupNodes, ...nodes], groupPadding)
-  return { document: { nodes: documentNodes, edges }, parsed, diagnostics }
+  const document = { nodes: documentNodes, edges }
+  if (layout === 'mindmap') {
+    const mindMapDocument = layoutMindMap(document, { origin, gridSize: options.gridSize, ...(options.mindMap ?? {}) })
+    return { document: { ...mindMapDocument, nodes: fitGroups(mindMapDocument.nodes, groupPadding) }, parsed, diagnostics }
+  }
+
+  return { document, parsed, diagnostics }
 }
 
 function createNode(node: MinuDiagramNode, position: { x: number; y: number }, diagnostics: MinuDiagramDiagnostic[]): CanvasNode {

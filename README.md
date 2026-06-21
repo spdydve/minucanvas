@@ -10,6 +10,7 @@ Reusable React canvas editor for JSON Canvas documents, with an MVP flowchart to
 - Separate canvas/surface themes and shape themes via CSS variables.
 - Base shape theme is a simple outline, including the dark mode style.
 - MVP diagram tools: select, pan, text, rectangle, diamond, ellipse, pill, arrow, line.
+- Optional diagram syntax compiler and mind map layout utility for generated diagrams.
 
 ## Install
 
@@ -145,7 +146,7 @@ See [`docs/mvp-usage.md`](docs/mvp-usage.md) for current editing behavior, diagr
 
 See [`docs/minucanvas-json.md`](docs/minucanvas-json.md) for the MinuCanvas JSON persistence format and JSON Canvas compatibility notes.
 
-See [`docs/minu-diagram-syntax.md`](docs/minu-diagram-syntax.md) for the proposed LLM-friendly diagram-as-code syntax. Parser/compiler helpers are available from `@dpklabs/minucanvas/syntax`.
+See [`docs/minu-diagram-syntax.md`](docs/minu-diagram-syntax.md) for the proposed LLM-friendly diagram-as-code syntax, including `layout mindmap`. Parser/compiler helpers are available from `@dpklabs/minucanvas/syntax`, and `layoutMindMap(document, options)` is exported from the root package.
 
 ## Releases
 

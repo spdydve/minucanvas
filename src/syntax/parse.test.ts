@@ -21,6 +21,17 @@ describe('parseMinuDiagramSyntax', () => {
     expect(parsed.connections[2]).toMatchObject({ from: 'Valid', to: 'Done', label: 'yes', color: 'green' })
   })
 
+  it('parses layout directives', () => {
+    const parsed = parseMinuDiagramSyntax(`
+      diagram "Plan" {
+        layout mindmap
+        Root > A
+      }
+    `)
+
+    expect(parsed.layout).toBe('mindmap')
+  })
+
   it('parses groups and assigns child group IDs', () => {
     const parsed = parseMinuDiagramSyntax(`
       Backend [label: "Backend services"] {
@@ -100,6 +111,30 @@ describe('compileMinuDiagramSyntax', () => {
 
     const centers = result.document.nodes.map((node) => node.y + node.height / 2)
     expect(new Set(centers).size).toBe(1)
+  })
+
+  it('compiles mind map layout with curved branch edges', () => {
+    const result = compileMinuDiagramSyntax(`
+      layout mindmap
+      Root [shape: pill]
+      Root > Research
+      Root > Build
+      Research > Interviews
+      Research > Competitors
+    `)
+
+    const root = result.document.nodes.find((node) => node.id === 'Root')
+    const research = result.document.nodes.find((node) => node.id === 'Research')
+    const build = result.document.nodes.find((node) => node.id === 'Build')
+    const interviews = result.document.nodes.find((node) => node.id === 'Interviews')
+    expect(root).toBeTruthy()
+    expect(research).toBeTruthy()
+    expect(build).toBeTruthy()
+    expect(interviews).toBeTruthy()
+    expect(research!.x).toBeGreaterThan(root!.x)
+    expect(build!.x).toBeLessThan(root!.x)
+    expect(interviews!.x).toBeGreaterThan(research!.x)
+    expect(result.document.edges.every((edge) => edge.toEnd === 'none' && edge.style?.routing === 'curved')).toBe(true)
   })
 
   it('routes downward diamond branches into the top of the target', () => {

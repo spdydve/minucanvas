@@ -1,6 +1,8 @@
+import type { MindMapLayoutOptions } from '../mindmap'
 import type { CanvasEdgeStyle, CanvasNodeStyle, CanvasShape, JsonCanvasDocument } from '../types'
 
 export type MinuDiagramDirection = 'down' | 'up' | 'right' | 'left'
+export type MinuDiagramLayout = 'flow' | 'mindmap'
 export type MinuDiagramDiagnosticSeverity = 'warning' | 'error'
 
 export interface MinuDiagramDiagnostic {
@@ -48,6 +50,7 @@ export interface MinuDiagramConnection {
 export interface ParsedMinuDiagram {
   title?: string | undefined
   direction: MinuDiagramDirection
+  layout?: MinuDiagramLayout | undefined
   nodes: MinuDiagramNode[]
   groups: MinuDiagramGroup[]
   connections: MinuDiagramConnection[]
@@ -66,6 +69,8 @@ export interface MinuDiagramCompileOptions {
   groupPadding?: number
   /** Snap generated node centers to this grid size. Set to false to disable. */
   gridSize?: number | false
+  layout?: MinuDiagramLayout | undefined
+  mindMap?: MindMapLayoutOptions | undefined
 }
 
 export interface MinuDiagramCompileResult {

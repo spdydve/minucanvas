@@ -182,6 +182,7 @@ export function parseMinuDiagramSyntax(source: string): ParsedMinuDiagram {
   const defaults: ParsedMinuDiagram['defaults'] = {}
   let title: string | undefined
   let direction: ParsedMinuDiagram['direction'] = 'down'
+  let layout: ParsedMinuDiagram['layout']
 
   for (const entry of normalizeLines(source)) {
     let text = entry.text
@@ -198,6 +199,12 @@ export function parseMinuDiagramSyntax(source: string): ParsedMinuDiagram {
     const directionMatch = text.match(/^direction\s+(down|up|right|left)$/i)
     if (directionMatch) {
       direction = directionMatch[1].toLowerCase() as ParsedMinuDiagram['direction']
+      continue
+    }
+
+    const layoutMatch = text.match(/^layout\s+(flow|mindmap)$/i)
+    if (layoutMatch) {
+      layout = layoutMatch[1].toLowerCase() as ParsedMinuDiagram['layout']
       continue
     }
 
@@ -252,7 +259,7 @@ export function parseMinuDiagramSyntax(source: string): ParsedMinuDiagram {
     }
   }
 
-  return { title, direction, nodes: [...nodes.values()], groups: [...groups.values()], connections, defaults, diagnostics }
+  return { title, direction, layout, nodes: [...nodes.values()], groups: [...groups.values()], connections, defaults, diagnostics }
 }
 
 function edgeStyleFromProps(props: Record<string, string>, diagnostics: MinuDiagramDiagnostic[], line: number): CanvasEdgeStyle | undefined {

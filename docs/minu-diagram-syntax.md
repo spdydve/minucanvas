@@ -14,6 +14,7 @@ This is a proposed LLM-friendly diagram-as-code syntax for generating MinuCanvas
 Supported first:
 
 - Flow/box-arrow diagrams
+- Mind map layout mode
 - Nodes
 - Groups
 - Connections
@@ -155,7 +156,44 @@ Allowed:
 - `right`
 - `left`
 
-This is a layout hint, not a hard guarantee. Initial implementation can place nodes by graph depth in the chosen direction.
+This is a layout hint, not a hard guarantee. Flow layout places nodes by graph depth in the chosen direction.
+
+### Layout
+
+Flow layout is the default. Use `layout mindmap` for a tree-style mind map arrangement:
+
+```txt
+diagram "Product plan" {
+  layout mindmap
+  Product [shape: pill]
+
+  Product > Research
+  Product > Build
+  Product > Launch
+  Research > Interviews
+  Research > Competitors
+  Build > Prototype
+  Build > MVP
+}
+```
+
+Mind map layout uses normal MinuCanvas nodes and edges, but arranges them around the root. The root is selected from the first node with no incoming edge, or the first node if every node has an incoming edge. Root children split left/right by default, descendants continue outward, and branch edges default to curved lines with no arrowheads.
+
+The compiler also accepts mind map options:
+
+```ts
+const { document } = compileMinuDiagramSyntax(source, {
+  layout: 'mindmap',
+  mindMap: {
+    rootId: 'Product',
+    horizontalGap: 140,
+    verticalGap: 32,
+    splitRootChildren: true,
+  },
+})
+```
+
+For non-syntax use, host apps can call `layoutMindMap(document, options)` from the root package and then pass the returned document to `<MinuCanvas />`.
 
 ### Styling
 
@@ -249,9 +287,11 @@ The syntax compiler is owned by the MinuCanvas package but kept separate from th
 
 ```ts
 import { compileMinuDiagramSyntax, parseMinuDiagramSyntax } from '@dpklabs/minucanvas/syntax'
+import { layoutMindMap } from '@dpklabs/minucanvas'
 
 const parsed = parseMinuDiagramSyntax(source)
 const { document, diagnostics } = compileMinuDiagramSyntax(source)
+const mindMapDocument = layoutMindMap(document, { rootId: 'Product' })
 ```
 
 The root package also re-exports these helpers for convenience.
@@ -263,11 +303,13 @@ The root package also re-exports these helpers for convenience.
 Status: initial implementation exists in `src/syntax`.
 
 - Parse diagram block or loose statements.
+- Parse `layout flow` and `layout mindmap`.
 - Parse node declarations with properties.
 - Parse group blocks.
 - Parse connections with labels and simple styles.
 - Auto-create referenced nodes.
 - Produce a basic layered layout from `direction`.
+- Produce a basic tree layout for mind maps.
 
 ### Phase 2: Import/export UI
 

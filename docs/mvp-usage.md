@@ -61,12 +61,34 @@ Useful syntax features:
 
 - `diagram "Title" { ... }`
 - `direction right | down | up | left`
+- `layout flow | mindmap`
 - node declarations: `Id [shape: diamond, label: "Approved?"]`
 - groups: `group Backend { Api; Worker }`
 - edges: `A > B`, `A - B`, `A <> B`, `A --> B`
 - edge labels: `A > B: yes`
 - edge styles: `A > B [style: dashed, routing: elbow]`
 - canonical routing values: `elbow`, `straight`, `curved`
+
+Mind map syntax uses the same nodes and edges with a tree layout:
+
+```txt
+diagram "Product plan" {
+  layout mindmap
+  Product [shape: pill]
+  Product > Research
+  Product > Build
+  Research > Interviews
+  Research > Competitors
+}
+```
+
+Host apps can also lay out an existing document as a mind map without syntax:
+
+```ts
+import { layoutMindMap } from '@dpklabs/minucanvas'
+
+setValue(layoutMindMap(value, { rootId: 'Product' }))
+```
 
 See [`minu-diagram-syntax.md`](./minu-diagram-syntax.md) for the full syntax proposal and API details.
 
