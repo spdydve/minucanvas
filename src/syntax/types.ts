@@ -64,6 +64,8 @@ export interface MinuDiagramCompileOptions {
   nodeGap?: number
   rankGap?: number
   groupPadding?: number
+  /** Snap generated node centers to this grid size. Set to false to disable. */
+  gridSize?: number | false
 }
 
 export interface MinuDiagramCompileResult {

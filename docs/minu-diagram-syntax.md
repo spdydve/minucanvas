@@ -208,7 +208,7 @@ diagram "Auth flow" {
   Login [shape: rectangle, label: "Login form"]
   Valid [shape: diamond, label: "Valid?"]
   Dashboard [shape: pill]
-  Error [shape: text, label: "Show error"]
+  Error [shape: text, label: "Show error", stroke: "#64748b", style: dashed]
 
   User > Login
   Login > Valid

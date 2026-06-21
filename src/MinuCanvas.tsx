@@ -117,6 +117,8 @@ const ZOOM_STEP = 0.12
 const CONNECTOR_MIDPOINT_SNAP_PX = 14
 const CONNECTOR_EDGE_HIT_PX = 18
 const MIN_NODE_SIZE = 48
+const DEFAULT_DIAMOND_WIDTH = 240
+const DEFAULT_DIAMOND_HEIGHT = 160
 const SHAPE_TOOLS = new Set<CanvasTool>(['text', 'rectangle', 'diamond', 'ellipse', 'pill'])
 type ResizeHandle = 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'nw'
 type AddDirection = JsonCanvasSide
@@ -648,8 +650,8 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
     (canvasPoint: Point, sourceTool: CanvasTool): CanvasNode<NodeExtra> => {
       const shape = shapeForTool(sourceTool)
       const defaults: Partial<CanvasNode<NodeExtra>> = getNodeDefaults?.(sourceTool, canvasPoint) ?? {}
-      const width = defaults.width ?? (sourceTool === 'text' ? 180 : sourceTool === 'diamond' ? 140 : 180)
-      const height = defaults.height ?? (sourceTool === 'text' ? 48 : sourceTool === 'diamond' ? 140 : 100)
+      const width = defaults.width ?? (sourceTool === 'text' ? 180 : sourceTool === 'diamond' ? DEFAULT_DIAMOND_WIDTH : 180)
+      const height = defaults.height ?? (sourceTool === 'text' ? 48 : sourceTool === 'diamond' ? DEFAULT_DIAMOND_HEIGHT : 100)
       const point = snapToGrid ? snapPoint(canvasPoint, gridSize) : canvasPoint
       const partial = {
         ...defaults,

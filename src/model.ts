@@ -2,6 +2,8 @@ import type { CanvasAlignment, CanvasDistribution, CanvasEdge, CanvasNode, Canva
 
 const DEFAULT_NODE_WIDTH = 220
 const DEFAULT_NODE_HEIGHT = 120
+const DEFAULT_DIAMOND_WIDTH = 240
+const DEFAULT_DIAMOND_HEIGHT = 160
 const DEFAULT_GRID_SIZE = 20
 
 export function createId(prefix: string): string {
@@ -45,8 +47,9 @@ export function createCanvasNode<NodeExtra extends Record<string, unknown> = Rec
   partial: Partial<CanvasNode<NodeExtra>>,
 ): CanvasNode<NodeExtra> {
   const type = partial.type ?? 'text'
-  const width = partial.width ?? (type === 'group' ? 360 : DEFAULT_NODE_WIDTH)
-  const height = partial.height ?? (type === 'group' ? 240 : DEFAULT_NODE_HEIGHT)
+  const shape = partial.shape ?? (type === 'group' ? 'rounded-rectangle' : 'rounded-rectangle')
+  const width = partial.width ?? (type === 'group' ? 360 : shape === 'diamond' ? DEFAULT_DIAMOND_WIDTH : DEFAULT_NODE_WIDTH)
+  const height = partial.height ?? (type === 'group' ? 240 : shape === 'diamond' ? DEFAULT_DIAMOND_HEIGHT : DEFAULT_NODE_HEIGHT)
   const node = {
     id: partial.id ?? createId('node'),
     type,
@@ -60,7 +63,7 @@ export function createCanvasNode<NodeExtra extends Record<string, unknown> = Rec
     label: partial.label,
     color: partial.color,
     background: partial.background,
-    shape: partial.shape ?? (type === 'group' ? 'rounded-rectangle' : 'rounded-rectangle'),
+    shape,
     style: partial.style,
     groupId: partial.groupId,
     locked: partial.locked,

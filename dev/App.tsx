@@ -20,7 +20,7 @@ const SAMPLE_DIAGRAM_SYNTAX = `diagram "Auth flow" {
   Login [shape: rectangle, label: "Login form"]
   Valid [shape: diamond, label: "Valid?"]
   Dashboard [shape: pill]
-  Error [shape: text, label: "Show error"]
+  Error [shape: text, label: "Show error", stroke: "#f8fafc", style: dashed]
 
   User > Login
   Login > Valid
@@ -45,10 +45,10 @@ const INITIAL_CANVAS: JsonCanvasDocument = {
       id: 'decision',
       type: 'text',
       text: 'Approved?',
-      x: 170,
-      y: -70,
-      width: 140,
-      height: 140,
+      x: 120,
+      y: -80,
+      width: 240,
+      height: 160,
       shape: 'diamond',
     },
     {

@@ -330,7 +330,7 @@
 }
 
 .minucanvas-node--text::before {
-  border-color: transparent;
+  border-color: var(--mc-node-stroke, transparent);
   background: transparent;
   box-shadow: none;
 }
@@ -358,6 +358,9 @@
   position: absolute;
   inset: 0;
   z-index: -1;
+  display: block;
+  width: 100%;
+  height: 100%;
   overflow: visible;
   pointer-events: none;
 }

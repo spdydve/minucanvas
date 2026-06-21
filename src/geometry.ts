@@ -264,6 +264,24 @@ function pointAtPolylineRatio(points: Point[], ratio: number): Point {
 
 function elbowRoutePoints(start: Point, end: Point, fromSide: JsonCanvasSide, toSide: JsonCanvasSide): Point[] {
   const outset = 32
+
+  if (fromSide === toSide) {
+    if (fromSide === 'bottom') {
+      const y = Math.max(start.y, end.y) + outset
+      return normalizeOrthogonalRoute([start, { x: start.x, y }, { x: end.x, y }, end])
+    }
+    if (fromSide === 'top') {
+      const y = Math.min(start.y, end.y) - outset
+      return normalizeOrthogonalRoute([start, { x: start.x, y }, { x: end.x, y }, end])
+    }
+    if (fromSide === 'right') {
+      const x = Math.max(start.x, end.x) + outset
+      return normalizeOrthogonalRoute([start, { x, y: start.y }, { x, y: end.y }, end])
+    }
+    const x = Math.min(start.x, end.x) - outset
+    return normalizeOrthogonalRoute([start, { x, y: start.y }, { x, y: end.y }, end])
+  }
+
   const startOut = controlOffset(fromSide, outset)
   const endOut = controlOffset(toSide, outset)
   const startStub = { x: start.x + startOut.x, y: start.y + startOut.y }
@@ -271,10 +289,10 @@ function elbowRoutePoints(start: Point, end: Point, fromSide: JsonCanvasSide, to
 
   if (fromSide === 'left' || fromSide === 'right') {
     const midX = (startStub.x + endStub.x) / 2
-    return [start, startStub, { x: midX, y: startStub.y }, { x: midX, y: endStub.y }, endStub, end]
+    return normalizeOrthogonalRoute([start, startStub, { x: midX, y: startStub.y }, { x: midX, y: endStub.y }, endStub, end])
   }
   const midY = (startStub.y + endStub.y) / 2
-  return [start, startStub, { x: startStub.x, y: midY }, { x: endStub.x, y: midY }, endStub, end]
+  return normalizeOrthogonalRoute([start, startStub, { x: startStub.x, y: midY }, { x: endStub.x, y: midY }, endStub, end])
 }
 
 function pointsToPath(points: Point[]): string {
@@ -314,6 +332,11 @@ function orthogonalizeRoute(points: Point[], fromSide: JsonCanvasSide, toSide: J
   return normalizeOrthogonalRoute(route, epsilon)
 }
 
+function pointIsTangentialToSide(anchor: Point, point: Point, side: JsonCanvasSide, epsilon = 0.5): boolean {
+  if (side === 'left' || side === 'right') return Math.abs(anchor.y - point.y) <= epsilon
+  return Math.abs(anchor.x - point.x) <= epsilon
+}
+
 export function edgeRoutePoints(edge: CanvasEdge, fromNode: CanvasNode, toNode: CanvasNode): Point[] {
   const sidePair = autoSidePair(fromNode, toNode)
   const fromSide = edge.fromAnchor?.side ?? edge.fromSide ?? sidePair.fromSide
@@ -326,7 +349,15 @@ export function edgeRoutePoints(edge: CanvasEdge, fromNode: CanvasNode, toNode: 
     const endOut = controlOffset(toSide, outset)
     const startStub = { x: start.x + startOut.x, y: start.y + startOut.y }
     const endStub = { x: end.x + endOut.x, y: end.y + endOut.y }
-    return orthogonalizeRoute([start, startStub, ...edge.waypoints, endStub, end], fromSide, toSide)
+    const firstWaypoint = edge.waypoints[0]
+    const lastWaypoint = edge.waypoints.at(-1)
+    return orthogonalizeRoute([
+      start,
+      ...(firstWaypoint && pointIsTangentialToSide(start, firstWaypoint, fromSide) ? [] : [startStub]),
+      ...edge.waypoints,
+      ...(lastWaypoint && pointIsTangentialToSide(end, lastWaypoint, toSide) ? [] : [endStub]),
+      end,
+    ], fromSide, toSide)
   }
   if ((edge.style?.routing ?? 'elbow') === 'elbow') return elbowRoutePoints(start, end, fromSide, toSide)
   return [start, end]

@@ -121,6 +121,27 @@ describe('connector anchor geometry', () => {
     expect(route.at(-1)).toEqual({ x: 300, y: 50 })
   })
 
+  it('routes same-side bottom connectors outside both nodes', () => {
+    const fromNode = createCanvasNode({ id: 'from', x: 300, y: 300, width: 100, height: 80 })
+    const toNode = createCanvasNode({ id: 'to', x: 0, y: 100, width: 100, height: 80 })
+    const edge = {
+      id: 'edge',
+      fromNode: 'from',
+      toNode: 'to',
+      fromAnchor: { side: 'bottom' as const, position: 0.5 },
+      toAnchor: { side: 'bottom' as const, position: 0.5 },
+      style: { routing: 'elbow' as const },
+    }
+
+    const points = edgeRoutePoints(edge, fromNode, toNode)
+    expect(points).toEqual([
+      { x: 350, y: 380 },
+      { x: 350, y: 412 },
+      { x: 50, y: 412 },
+      { x: 50, y: 180 },
+    ])
+  })
+
   it('turns a dragged straight segment into an orthogonal elbow route', () => {
     const route = [
       { x: 100, y: 50 },

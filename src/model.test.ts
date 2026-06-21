@@ -39,6 +39,12 @@ describe('canvas model helpers', () => {
     expect(duplicated.selection.edgeIds).toHaveLength(1)
   })
 
+  it('creates default diamonds at a 3:2 grid-friendly ratio', () => {
+    const node = createCanvasNode({ type: 'text', shape: 'diamond' })
+    expect(node.width).toBe(240)
+    expect(node.height).toBe(160)
+  })
+
   it('maps tool keys to matching base flowchart shapes', () => {
     expect(shapeForTool('rectangle')).toBe('rectangle')
     expect(shapeForTool('diamond')).toBe('diamond')

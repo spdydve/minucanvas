@@ -10,6 +10,8 @@ const TEXT_WIDTH = 200
 const TEXT_HEIGHT = 72
 const IMAGE_WIDTH = 320
 const IMAGE_HEIGHT = 200
+const DIAMOND_WIDTH = 240
+const DIAMOND_HEIGHT = 160
 const GROUP_PADDING = 40
 
 const SHAPE_ALIASES: Record<string, CanvasShape> = {
@@ -38,8 +40,9 @@ export function compileParsedMinuDiagram(parsed: ParsedMinuDiagram, options: Min
   const nodeGap = options.nodeGap ?? 56
   const rankGap = options.rankGap ?? 112
   const groupPadding = options.groupPadding ?? GROUP_PADDING
+  const gridSize = options.gridSize === false ? null : options.gridSize ?? 20
   const ranks = rankNodes(parsed)
-  const nodePositions = placeNodes(parsed, ranks, origin, nodeGap, rankGap)
+  const nodePositions = placeNodes(parsed, ranks, origin, nodeGap, rankGap, gridSize)
 
   const nodes: CanvasNode[] = []
   const groupNodes: CanvasNode[] = []
@@ -115,7 +118,7 @@ function sizeForNode(node: MinuDiagramNode, type: CanvasNode['type'], shape: Can
   if (node.width && node.height) return { width: node.width, height: node.height }
   if (type === 'image') return { width: node.width ?? IMAGE_WIDTH, height: node.height ?? IMAGE_HEIGHT }
   if (shape === 'text') return { width: node.width ?? TEXT_WIDTH, height: node.height ?? TEXT_HEIGHT }
-  if (shape === 'diamond') return { width: node.width ?? 160, height: node.height ?? 140 }
+  if (shape === 'diamond') return { width: node.width ?? DIAMOND_WIDTH, height: node.height ?? DIAMOND_HEIGHT }
   if (shape === 'pill') return { width: node.width ?? 180, height: node.height ?? 84 }
   return { width: node.width ?? DEFAULT_WIDTH, height: node.height ?? DEFAULT_HEIGHT }
 }
@@ -196,6 +199,7 @@ function placeNodes(
   origin: { x: number; y: number },
   nodeGap: number,
   rankGap: number,
+  gridSize: number | null,
 ): Map<string, { x: number; y: number }> {
   const byRank = new Map<number, MinuDiagramNode[]>()
   for (const node of parsed.nodes) {
@@ -205,26 +209,33 @@ function placeNodes(
   const allSizes = parsed.nodes.map(estimatedNodeSize)
   const laneHeight = Math.max(DEFAULT_HEIGHT, ...allSizes.map((size) => size.height))
   const laneWidth = Math.max(DEFAULT_WIDTH, ...allSizes.map((size) => size.width))
+  const snapCenter = (value: number) => gridSize ? Math.round(value / gridSize) * gridSize : value
+  const primaryStep = snapCenter(DEFAULT_WIDTH + rankGap)
+  const secondaryStep = snapCenter(laneHeight + nodeGap)
+  const baseCenter = {
+    x: snapCenter(origin.x + laneWidth / 2),
+    y: snapCenter(origin.y + laneHeight / 2),
+  }
   const positions = new Map<string, { x: number; y: number }>()
   for (const [rank, nodes] of [...byRank.entries()].sort((a, b) => a[0] - b[0])) {
     const sizes = nodes.map(estimatedNodeSize)
-    const rowHeight = parsed.direction === 'left' || parsed.direction === 'right' ? laneHeight : Math.max(DEFAULT_HEIGHT, ...sizes.map((size) => size.height))
-    const columnWidth = parsed.direction === 'up' || parsed.direction === 'down' ? laneWidth : Math.max(DEFAULT_WIDTH, ...sizes.map((size) => size.width))
     nodes.forEach((node, index) => {
       const size = sizes[index] ?? { width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT }
-      const primary = rank * (DEFAULT_WIDTH + rankGap)
-      const secondary = index * (rowHeight + nodeGap)
-      const x = parsed.direction === 'left'
-        ? origin.x - primary + (columnWidth - size.width) / 2
-        : parsed.direction === 'right'
-          ? origin.x + primary + (columnWidth - size.width) / 2
-          : origin.x + secondary
-      const y = parsed.direction === 'up'
-        ? origin.y - primary + (rowHeight - size.height) / 2
-        : parsed.direction === 'down'
-          ? origin.y + primary + (rowHeight - size.height) / 2
-          : origin.y + secondary + (rowHeight - size.height) / 2
-      positions.set(node.id, { x, y })
+      const primary = rank * primaryStep
+      const secondary = index * secondaryStep
+      const center = {
+        x: parsed.direction === 'left'
+          ? baseCenter.x - primary
+          : parsed.direction === 'right'
+            ? baseCenter.x + primary
+            : baseCenter.x + secondary,
+        y: parsed.direction === 'up'
+          ? baseCenter.y - primary
+          : parsed.direction === 'down'
+            ? baseCenter.y + primary
+            : baseCenter.y + secondary,
+      }
+      positions.set(node.id, { x: center.x - size.width / 2, y: center.y - size.height / 2 })
     })
   }
   return positions
