@@ -46,6 +46,7 @@ import type {
   CanvasHandle,
   CanvasNode,
   CanvasSelection,
+  CanvasShape,
   CanvasTool,
   CanvasViewport,
   JsonCanvasDocument,
@@ -119,6 +120,7 @@ const CONNECTOR_EDGE_HIT_PX = 18
 const MIN_NODE_SIZE = 48
 const DEFAULT_DIAMOND_WIDTH = 240
 const DEFAULT_DIAMOND_HEIGHT = 160
+const DEFAULT_ELLIPSE_SIZE = 160
 const SHAPE_TOOLS = new Set<CanvasTool>(['text', 'rectangle', 'diamond', 'ellipse', 'pill'])
 type ResizeHandle = 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'nw'
 type AddDirection = JsonCanvasSide
@@ -139,6 +141,23 @@ type ExportOptions = {
   quality: number
   background: ExportBackground
   colorMode: ExportColorMode
+}
+
+type ShapeSwitcherState = { x: number; y: number } | null
+
+const SHAPE_SWITCHER_SHAPES: CanvasShape[] = ['rectangle', 'pill', 'ellipse', 'diamond', 'text']
+
+function shapeLabel(shape: CanvasShape): string {
+  if (shape === 'rounded-rectangle') return 'Rounded rectangle'
+  return shape.slice(0, 1).toUpperCase() + shape.slice(1).replace(/-/g, ' ')
+}
+
+function CanvasShapeIcon({ shape }: { shape: CanvasShape }) {
+  if (shape === 'text') return <path d="M6 8V5h16v3M14 5v18M10 23h8" />
+  if (shape === 'ellipse') return <ellipse cx="14" cy="14" rx="7.5" ry="7.5" />
+  if (shape === 'diamond') return <path d="M14 5l9 9-9 9-9-9 9-9z" />
+  if (shape === 'pill') return <rect x="6" y="9" width="16" height="10" rx="5" />
+  return <rect x="6" y="8" width="16" height="12" rx="4" />
 }
 
 function clampZoom(zoom: number): number {
@@ -310,7 +329,7 @@ function svgShapeForNode(node: CanvasNode, defaultColor: string): string {
   if (node.shape === 'diamond') return `<polygon points="${node.x + node.width / 2},${node.y} ${node.x + node.width},${node.y + node.height / 2} ${node.x + node.width / 2},${node.y + node.height} ${node.x},${node.y + node.height / 2}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}"${dash} />`
   if (node.shape === 'parallelogram') return `<polygon points="${node.x + node.width * 0.18},${node.y} ${node.x + node.width},${node.y} ${node.x + node.width * 0.82},${node.y + node.height} ${node.x},${node.y + node.height}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}"${dash} />`
   if (node.shape === 'hexagon') return `<polygon points="${node.x + node.width * 0.2},${node.y} ${node.x + node.width * 0.8},${node.y} ${node.x + node.width},${node.y + node.height / 2} ${node.x + node.width * 0.8},${node.y + node.height} ${node.x + node.width * 0.2},${node.y + node.height} ${node.x},${node.y + node.height / 2}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}"${dash} />`
-  const radius = node.shape === 'pill' ? Math.min(node.width, node.height) / 2 : node.shape === 'rectangle' ? 2 : style.borderRadius ?? 10
+  const radius = node.shape === 'pill' ? Math.min(node.width, node.height) / 2 : style.borderRadius ?? 16
   return `<rect x="${node.x}" y="${node.y}" width="${node.width}" height="${node.height}" rx="${radius}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}"${dash} />`
 }
 
@@ -328,6 +347,14 @@ function connectorEndForTool(tool: CanvasTool): 'none' | 'arrow' {
 
 function isNodeTool(tool: CanvasTool): boolean {
   return SHAPE_TOOLS.has(tool)
+}
+
+function directionFromArrowKey(key: string): AddDirection | null {
+  if (key === 'ArrowUp') return 'top'
+  if (key === 'ArrowRight') return 'right'
+  if (key === 'ArrowDown') return 'bottom'
+  if (key === 'ArrowLeft') return 'left'
+  return null
 }
 
 function selectionEquals(a: CanvasSelection, b: CanvasSelection): boolean {
@@ -587,6 +614,7 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
   const [pendingConnectorAnchor, setPendingConnectorAnchor] = useState<ConnectorAnchor | null>(null)
   const [panningModifierActive, setPanningModifierActive] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
+  const [shapeSwitcher, setShapeSwitcher] = useState<ShapeSwitcherState>(null)
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null)
   const [alignmentGuides, setAlignmentGuides] = useState<AlignmentGuide[]>([])
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
@@ -615,7 +643,10 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
     (nextSelection: CanvasSelection) => {
       const normalized = normalizeSelection(nextSelection)
       if (selectedNodeIds === undefined && selectedEdgeIds === undefined) setLocalSelection(normalized)
-      if (!selectionEquals(selection, normalized)) onSelectionChange?.(normalized)
+      if (!selectionEquals(selection, normalized)) {
+        setShapeSwitcher(null)
+        onSelectionChange?.(normalized)
+      }
     },
     [onSelectionChange, selectedEdgeIds, selectedNodeIds, selection],
   )
@@ -650,8 +681,8 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
     (canvasPoint: Point, sourceTool: CanvasTool): CanvasNode<NodeExtra> => {
       const shape = shapeForTool(sourceTool)
       const defaults: Partial<CanvasNode<NodeExtra>> = getNodeDefaults?.(sourceTool, canvasPoint) ?? {}
-      const width = defaults.width ?? (sourceTool === 'text' ? 180 : sourceTool === 'diamond' ? DEFAULT_DIAMOND_WIDTH : 180)
-      const height = defaults.height ?? (sourceTool === 'text' ? 48 : sourceTool === 'diamond' ? DEFAULT_DIAMOND_HEIGHT : 100)
+      const width = defaults.width ?? (sourceTool === 'text' ? 180 : sourceTool === 'diamond' ? DEFAULT_DIAMOND_WIDTH : sourceTool === 'ellipse' ? DEFAULT_ELLIPSE_SIZE : 180)
+      const height = defaults.height ?? (sourceTool === 'text' ? 48 : sourceTool === 'diamond' ? DEFAULT_DIAMOND_HEIGHT : sourceTool === 'ellipse' ? DEFAULT_ELLIPSE_SIZE : 100)
       const point = snapToGrid ? snapPoint(canvasPoint, gridSize) : canvasPoint
       const partial = {
         ...defaults,
@@ -806,6 +837,40 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
 
     return null
   }, [nodeById, selection.edgeIds, selection.nodeIds, value.edges])
+
+  const openShapeSwitcher = useCallback(() => {
+    if (readOnly || selection.nodeIds.length === 0) return false
+    const nodes = selection.nodeIds.reduce<Array<CanvasNode<NodeExtra>>>((next, nodeId) => {
+      const node = nodeById.get(nodeId)
+      if (node && node.type !== 'group' && node.type !== 'image' && node.type !== 'link') next.push(node)
+      return next
+    }, [])
+    const bounds = boundsForNodes(nodes)
+    const root = rootRef.current
+    if (!bounds || !root) return false
+    const x = bounds.x + bounds.width / 2
+    const y = bounds.y - 12
+    setContextMenu(null)
+    setShapeSwitcher({
+      x: Math.max(12, Math.min(root.clientWidth - 12, x * viewport.zoom + viewport.x)),
+      y: Math.max(12, y * viewport.zoom + viewport.y),
+    })
+    return true
+  }, [nodeById, readOnly, selection.nodeIds, viewport])
+
+  const applyShapeToSelection = useCallback((shape: CanvasShape) => {
+    if (readOnly || selection.nodeIds.length === 0) return
+    emitChange({
+      ...value,
+      nodes: value.nodes.map((node) => (
+        selection.nodeIds.includes(node.id) && node.type !== 'group' && node.type !== 'image' && node.type !== 'link'
+          ? { ...node, shape }
+          : node
+      )),
+    }, 'update-node')
+    setShapeSwitcher(null)
+    rootRef.current?.focus()
+  }, [emitChange, readOnly, selection.nodeIds, value])
 
   const moveSelectedNodesByKeyboard = useCallback(
     (direction: AddDirection) => {
@@ -1290,6 +1355,7 @@ ${nodeMarkup}
     if (readOnly) return
     event.stopPropagation()
     setContextMenu(null)
+    setShapeSwitcher(null)
     rootRef.current?.focus()
     const interactionNode = activeTool === 'select' && node.groupId && activeGroupId !== node.groupId
       ? nodeById.get(node.groupId) ?? node
@@ -1367,6 +1433,7 @@ ${nodeMarkup}
 
   const handleSurfacePointerDown = useCallback((event: PointerEvent<HTMLDivElement>) => {
     setContextMenu(null)
+    setShapeSwitcher(null)
     setActiveGroupId(null)
     rootRef.current?.focus()
     setEditingEdgeId(null)
@@ -1962,6 +2029,7 @@ ${nodeMarkup}
     }
     if (event.key === 'Escape') {
       setContextMenu(null)
+      setShapeSwitcher(null)
       setActiveGroupId(null)
       setEditingNodeId(null)
       setEditingEdgeId(null)
@@ -1972,6 +2040,7 @@ ${nodeMarkup}
     }
     if (event.key === 'Tab') {
       event.preventDefault()
+      if (selection.nodeIds.length > 0 && openShapeSwitcher()) return
       cycleSelection(event.shiftKey)
       return
     }
@@ -1992,36 +2061,24 @@ ${nodeMarkup}
       deleteCurrentSelection()
       return
     }
+    const arrowDirection = directionFromArrowKey(event.key)
+    if (!mod && event.altKey && !event.shiftKey && arrowDirection && navigateSelection(arrowDirection)) {
+      event.preventDefault()
+      return
+    }
     if (!mod && !event.altKey && !event.shiftKey) {
-      const direction = event.key === 'ArrowUp'
-        ? 'top'
-        : event.key === 'ArrowRight'
-          ? 'right'
-          : event.key === 'ArrowDown'
-            ? 'bottom'
-            : event.key === 'ArrowLeft'
-              ? 'left'
-              : null
-      if (direction && selection.nodeIds.length > 0 && moveSelectedNodesByKeyboard(direction)) {
+      if (arrowDirection && selection.nodeIds.length > 0 && moveSelectedNodesByKeyboard(arrowDirection)) {
         event.preventDefault()
         return
       }
-      if (direction && navigateSelection(direction)) {
+      if (arrowDirection && navigateSelection(arrowDirection)) {
         event.preventDefault()
         return
       }
     }
     if (mod && !readOnly && selection.nodeIds.length === 1) {
       const selectedNodeId = selection.nodeIds[0] ?? ''
-      const direction = event.key === 'ArrowUp'
-        ? 'top'
-        : event.key === 'ArrowRight'
-          ? 'right'
-          : event.key === 'ArrowDown'
-            ? 'bottom'
-            : event.key === 'ArrowLeft'
-              ? 'left'
-              : null
+      const direction = arrowDirection
       if (direction) {
         const sequence = addSequenceRef.current
         const sourceNodeId = sequence?.direction === direction && sequence.lastNodeId === selectedNodeId
@@ -2061,7 +2118,7 @@ ${nodeMarkup}
       event.preventDefault()
       setActiveTool(nextTool)
     }
-  }, [bringCurrentSelectionToFront, copyCurrentSelection, createConnectedNode, cycleSelection, deleteCurrentSelection, duplicateCurrentSelection, emitSelection, groupCurrentSelection, moveSelectedNodesByKeyboard, navigateSelection, nodeById, pasteClipboard, readOnly, redo, resetView, selection.edgeIds, selection.nodeIds, sendCurrentSelectionToBack, setActiveTool, shortcuts, undo, ungroupCurrentSelection, zoomBy])
+  }, [bringCurrentSelectionToFront, copyCurrentSelection, createConnectedNode, cycleSelection, deleteCurrentSelection, duplicateCurrentSelection, emitSelection, groupCurrentSelection, moveSelectedNodesByKeyboard, navigateSelection, nodeById, openShapeSwitcher, pasteClipboard, readOnly, redo, resetView, selection.edgeIds, selection.nodeIds, sendCurrentSelectionToBack, setActiveTool, shortcuts, undo, ungroupCurrentSelection, zoomBy])
 
   const handleKeyUp = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Shift' || event.key === ' ') setPanningModifierActive(false)
@@ -2071,6 +2128,7 @@ ${nodeMarkup}
 
   const handleContextMenu = useCallback((event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault()
+    setShapeSwitcher(null)
     rootRef.current?.focus()
     const target = event.target instanceof HTMLElement ? event.target : null
     const nodeElement = target?.closest<HTMLElement>('[data-minucanvas-node-id]')
@@ -2118,6 +2176,16 @@ ${nodeMarkup}
   const activeCanvasTheme = canvasTheme ?? theme
   const themeClass = activeCanvasTheme === 'system' ? '' : ` minucanvas--theme-${activeCanvasTheme}`
   const shapeThemeClass = ` minucanvas--shape-${shapeTheme}`
+  const selectedShapeNodes = selection.nodeIds.reduce<Array<CanvasNode<NodeExtra>>>((next, nodeId) => {
+    const node = nodeById.get(nodeId)
+    if (node && node.type !== 'group' && node.type !== 'image' && node.type !== 'link') next.push(node)
+    return next
+  }, [])
+  const selectedShape = selectedShapeNodes.length > 0
+    ? selectedShapeNodes.every((node) => (node.shape ?? 'rounded-rectangle') === (selectedShapeNodes[0]?.shape ?? 'rounded-rectangle'))
+      ? selectedShapeNodes[0]?.shape ?? 'rounded-rectangle'
+      : null
+    : null
 
   return (
     <div
@@ -2542,6 +2610,47 @@ ${nodeMarkup}
           if (file) void replaceSelectedImage(file)
         }}
       />
+      {shapeSwitcher && selectedShapeNodes.length > 0 ? (
+        <div
+          className="minucanvas-shape-switcher"
+          style={{ left: shapeSwitcher.x, top: shapeSwitcher.y }}
+          role="menu"
+          aria-label="Change shape"
+          onPointerDown={(event) => event.stopPropagation()}
+          onKeyDown={(event) => {
+            event.stopPropagation()
+            if (event.key === 'Escape') {
+              event.preventDefault()
+              setShapeSwitcher(null)
+              rootRef.current?.focus()
+              return
+            }
+            if (!['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp'].includes(event.key)) return
+            event.preventDefault()
+            const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'))
+            const currentIndex = Math.max(0, buttons.findIndex((button) => button === document.activeElement))
+            const delta = event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1
+            buttons[(currentIndex + delta + buttons.length) % buttons.length]?.focus()
+          }}
+        >
+          {SHAPE_SWITCHER_SHAPES.map((shape, index) => (
+            <button
+              key={shape}
+              type="button"
+              className={selectedShape === shape ? 'is-active' : ''}
+              title={shapeLabel(shape)}
+              aria-label={shapeLabel(shape)}
+              aria-checked={selectedShape === shape}
+              role="menuitemradio"
+              autoFocus={selectedShape ? selectedShape === shape : index === 0}
+              onClick={() => applyShapeToSelection(shape)}
+            >
+              <svg viewBox="0 0 28 28" aria-hidden="true"><CanvasShapeIcon shape={shape} /></svg>
+              <span>{shapeLabel(shape)}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
       {exportDialogOpen ? (
         <div className="minucanvas-export-backdrop" role="presentation" onPointerDown={() => setExportDialogOpen(false)}>
           <div className="minucanvas-export-dialog" role="dialog" aria-modal="true" aria-label="Export" onPointerDown={(event) => event.stopPropagation()}>

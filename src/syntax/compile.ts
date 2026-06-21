@@ -12,6 +12,7 @@ const IMAGE_WIDTH = 320
 const IMAGE_HEIGHT = 200
 const DIAMOND_WIDTH = 240
 const DIAMOND_HEIGHT = 160
+const ELLIPSE_SIZE = 160
 const GROUP_PADDING = 40
 
 const SHAPE_ALIASES: Record<string, CanvasShape> = {
@@ -119,6 +120,7 @@ function sizeForNode(node: MinuDiagramNode, type: CanvasNode['type'], shape: Can
   if (type === 'image') return { width: node.width ?? IMAGE_WIDTH, height: node.height ?? IMAGE_HEIGHT }
   if (shape === 'text') return { width: node.width ?? TEXT_WIDTH, height: node.height ?? TEXT_HEIGHT }
   if (shape === 'diamond') return { width: node.width ?? DIAMOND_WIDTH, height: node.height ?? DIAMOND_HEIGHT }
+  if (shape === 'ellipse') return { width: node.width ?? ELLIPSE_SIZE, height: node.height ?? ELLIPSE_SIZE }
   if (shape === 'pill') return { width: node.width ?? 180, height: node.height ?? 84 }
   return { width: node.width ?? DEFAULT_WIDTH, height: node.height ?? DEFAULT_HEIGHT }
 }

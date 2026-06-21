@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { anchorForEdgeAnchor, defaultEdgeAnchorForSide, defaultEdgeConnection, edgeAnchorForPoint, edgeLabelPoint, edgePath, edgeRoutePoints, edgeWaypointHandlePoint, moveOrthogonalRouteSegment, sideForPoint } from './geometry'
+import { anchorForEdgeAnchor, defaultEdgeAnchorForSide, defaultEdgeConnection, edgeAnchorForPoint, edgeLabelPoint, edgePath, edgeRoutePoints, edgeWaypointHandlePoint, moveOrthogonalRouteSegment, roundedPolylinePath, sideForPoint } from './geometry'
 import { createCanvasNode } from './model'
 
 describe('connector anchor geometry', () => {
@@ -59,8 +59,16 @@ describe('connector anchor geometry', () => {
       waypoints: [{ x: 150, y: 120 }],
     }
 
-    expect(edgePath(edge, fromNode, toNode)).toBe('M 100 50 L 132 50 L 132 120 L 150 120 L 150 50 L 200 50')
+    expect(edgePath(edge, fromNode, toNode)).toBe('M 100 50 L 120 50 Q 132 50 132 62 L 132 111 Q 132 120 141 120 L 141 120 Q 150 120 150 111 L 150 62 Q 150 50 162 50 L 200 50')
     expect(edgeWaypointHandlePoint(edge, fromNode, toNode)).toEqual({ x: 150, y: 120 })
+  })
+
+  it('rounds orthogonal connector corners without changing endpoints', () => {
+    expect(roundedPolylinePath([
+      { x: 0, y: 0 },
+      { x: 40, y: 0 },
+      { x: 40, y: 40 },
+    ], 12)).toBe('M 0 0 L 28 0 Q 40 0 40 12 L 40 40')
   })
 
   it('moves orthogonal route segments without introducing diagonals', () => {

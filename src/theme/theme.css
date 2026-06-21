@@ -19,7 +19,7 @@
   --mc-shape-text: var(--mc-canvas-text);
   --mc-shape-selected: var(--mc-canvas-accent);
   --mc-shape-stroke-width: 1.5px;
-  --mc-shape-radius: 10px;
+  --mc-shape-radius: 16px;
   --mc-shape-shadow: none;
 
   /* Line theme tokens */
@@ -322,7 +322,7 @@
 }
 
 .minucanvas-node--rectangle::before {
-  border-radius: 2px;
+  border-radius: var(--mc-node-radius, var(--mc-shape-radius));
 }
 
 .minucanvas-node--rounded-rectangle::before {
@@ -343,9 +343,12 @@
   box-shadow: 0 0 0 3px var(--mc-accent-soft, var(--mc-canvas-accent-soft));
 }
 
-.minucanvas-node--pill::before,
-.minucanvas-node--ellipse::before {
+.minucanvas-node--pill::before {
   border-radius: 999px;
+}
+
+.minucanvas-node--ellipse::before {
+  border-radius: 50%;
 }
 
 .minucanvas-node--diamond::before,
@@ -850,6 +853,57 @@
 .minucanvas--readonly .minucanvas-node,
 .minucanvas--readonly .minucanvas-edge__path {
   cursor: default;
+}
+
+.minucanvas-shape-switcher {
+  position: absolute;
+  z-index: 80;
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  border: 1px solid var(--mc-border, var(--mc-canvas-border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--mc-surface, var(--mc-canvas-surface)) 94%, transparent);
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.24);
+  color: var(--mc-text, var(--mc-canvas-text));
+  padding: 6px;
+  transform: translate(-50%, calc(-100% - 8px));
+}
+
+.minucanvas-shape-switcher button {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: center;
+  justify-content: center;
+  width: 58px;
+  min-height: 52px;
+  appearance: none;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+  padding: 5px 4px;
+}
+
+.minucanvas-shape-switcher button:hover,
+.minucanvas-shape-switcher button:focus-visible,
+.minucanvas-shape-switcher button.is-active {
+  background: color-mix(in srgb, var(--mc-text, var(--mc-canvas-text)) 14%, transparent);
+  outline: none;
+}
+
+.minucanvas-shape-switcher svg {
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .minucanvas-style-toolbar {

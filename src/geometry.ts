@@ -208,12 +208,12 @@ export function edgePath(edge: CanvasEdge, fromNode: CanvasNode, toNode: CanvasN
   const end = edge.toAnchor ? anchorForEdgeAnchor(toNode, edge.toAnchor) : anchorForSide(toNode, toSide)
   const routing = edge.style?.routing ?? 'elbow'
   if (edge.waypoints?.length) {
-    return edgeRoutePoints(edge, fromNode, toNode).map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')
+    return roundedPolylinePath(edgeRoutePoints(edge, fromNode, toNode))
   }
 
   if (routing === 'straight') return `M ${start.x} ${start.y} L ${end.x} ${end.y}`
 
-  if (routing === 'elbow') return pointsToPath(elbowRoutePoints(start, end, fromSide, toSide))
+  if (routing === 'elbow') return roundedPolylinePath(elbowRoutePoints(start, end, fromSide, toSide))
 
   const distance = Math.hypot(end.x - start.x, end.y - start.y)
   const magnitude = clamp(distance * 0.35, 48, 180)
@@ -295,8 +295,40 @@ function elbowRoutePoints(start: Point, end: Point, fromSide: JsonCanvasSide, to
   return normalizeOrthogonalRoute([start, startStub, { x: startStub.x, y: midY }, { x: endStub.x, y: midY }, endStub, end])
 }
 
-function pointsToPath(points: Point[]): string {
-  return points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')
+function pointToward(from: Point, to: Point, distance: number): Point {
+  const length = Math.hypot(to.x - from.x, to.y - from.y)
+  if (length <= 0) return { ...from }
+  const ratio = distance / length
+  return {
+    x: from.x + (to.x - from.x) * ratio,
+    y: from.y + (to.y - from.y) * ratio,
+  }
+}
+
+export function roundedPolylinePath(points: Point[], radius = 12): string {
+  const route = normalizeOrthogonalRoute(points)
+  if (route.length === 0) return ''
+  if (route.length === 1) return `M ${route[0]!.x} ${route[0]!.y}`
+
+  const commands = [`M ${route[0]!.x} ${route[0]!.y}`]
+  for (let index = 1; index < route.length - 1; index += 1) {
+    const previous = route[index - 1]!
+    const current = route[index]!
+    const next = route[index + 1]!
+    const previousLength = Math.hypot(current.x - previous.x, current.y - previous.y)
+    const nextLength = Math.hypot(next.x - current.x, next.y - current.y)
+    const turnRadius = Math.min(radius, previousLength / 2, nextLength / 2)
+    if (turnRadius <= 0.5 || collinear(previous, current, next, 0.5)) {
+      commands.push(`L ${current.x} ${current.y}`)
+      continue
+    }
+    const entry = pointToward(current, previous, turnRadius)
+    const exit = pointToward(current, next, turnRadius)
+    commands.push(`L ${entry.x} ${entry.y}`, `Q ${current.x} ${current.y} ${exit.x} ${exit.y}`)
+  }
+  const last = route.at(-1)!
+  commands.push(`L ${last.x} ${last.y}`)
+  return commands.join(' ')
 }
 
 function orthogonalCorner(a: Point, b: Point, preferHorizontalFirst: boolean): Point {

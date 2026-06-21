@@ -45,6 +45,12 @@ describe('canvas model helpers', () => {
     expect(node.height).toBe(160)
   })
 
+  it('creates default ellipses as true circles', () => {
+    const node = createCanvasNode({ type: 'text', shape: 'ellipse' })
+    expect(node.width).toBe(160)
+    expect(node.height).toBe(160)
+  })
+
   it('maps tool keys to matching base flowchart shapes', () => {
     expect(shapeForTool('rectangle')).toBe('rectangle')
     expect(shapeForTool('diamond')).toBe('diamond')
