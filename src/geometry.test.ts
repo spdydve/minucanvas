@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { anchorForEdgeAnchor, edgeAnchorForPoint, edgeLabelPoint, sideForPoint } from './geometry'
+import { anchorForEdgeAnchor, defaultEdgeAnchorForSide, defaultEdgeConnection, edgeAnchorForPoint, edgeLabelPoint, edgePath, edgeRoutePoints, edgeWaypointHandlePoint, moveOrthogonalRouteSegment, sideForPoint } from './geometry'
 import { createCanvasNode } from './model'
 
 describe('connector anchor geometry', () => {
@@ -21,6 +21,118 @@ describe('connector anchor geometry', () => {
 
   it('resolves an edge anchor back to a point on the node outline', () => {
     expect(anchorForEdgeAnchor(node, { side: 'bottom', position: 0.25 })).toEqual({ x: 135, y: 340 })
+  })
+
+  it('defaults diamond anchors to cardinal points', () => {
+    const diamond = createCanvasNode({ id: 'd', x: 100, y: 200, width: 140, height: 140, shape: 'diamond' })
+    const anchor = defaultEdgeAnchorForSide(diamond, 'right')
+    expect(anchor).toEqual({ side: 'right', position: 0 })
+    expect(anchorForEdgeAnchor(diamond, anchor)).toEqual({ x: 240, y: 270 })
+  })
+
+  it('chooses shared defaults for diamond branches and back edges', () => {
+    const diamond = createCanvasNode({ id: 'decision', x: 200, y: 0, width: 140, height: 140, shape: 'diamond' })
+    const lower = createCanvasNode({ id: 'lower', x: 420, y: 220, width: 180, height: 80 })
+    const previous = createCanvasNode({ id: 'previous', x: -120, y: 220, width: 180, height: 80 })
+
+    expect(defaultEdgeConnection(diamond, lower)).toMatchObject({
+      fromSide: 'bottom',
+      toSide: 'top',
+      fromAnchor: { side: 'bottom', position: 0 },
+    })
+    expect(defaultEdgeConnection(lower, previous)).toMatchObject({
+      fromSide: 'bottom',
+      toSide: 'bottom',
+      style: { routing: 'elbow' },
+    })
+  })
+
+  it('uses editable waypoints for edge paths and handles', () => {
+    const fromNode = createCanvasNode({ id: 'from', x: 0, y: 0, width: 100, height: 100 })
+    const toNode = createCanvasNode({ id: 'to', x: 200, y: 0, width: 100, height: 100 })
+    const edge = {
+      id: 'edge',
+      fromNode: 'from',
+      toNode: 'to',
+      fromAnchor: { side: 'right' as const, position: 0.5 },
+      toAnchor: { side: 'left' as const, position: 0.5 },
+      waypoints: [{ x: 150, y: 120 }],
+    }
+
+    expect(edgePath(edge, fromNode, toNode)).toBe('M 100 50 L 132 50 L 132 120 L 150 120 L 150 50 L 200 50')
+    expect(edgeWaypointHandlePoint(edge, fromNode, toNode)).toEqual({ x: 150, y: 120 })
+  })
+
+  it('moves orthogonal route segments without introducing diagonals', () => {
+    const route = [
+      { x: 100, y: 50 },
+      { x: 132, y: 50 },
+      { x: 200, y: 50 },
+      { x: 200, y: 150 },
+      { x: 268, y: 150 },
+      { x: 300, y: 150 },
+    ]
+
+    const moved = moveOrthogonalRouteSegment(route, 2, { x: 40, y: 10 })
+    expect(moved).toEqual([
+      { x: 100, y: 50 },
+      { x: 240, y: 50 },
+      { x: 240, y: 150 },
+      { x: 300, y: 150 },
+    ])
+  })
+
+  it('moves a whole collinear run when dragging one part of an elbow side', () => {
+    const route = [
+      { x: 100, y: 50 },
+      { x: 132, y: 50 },
+      { x: 200, y: 50 },
+      { x: 200, y: 150 },
+      { x: 300, y: 150 },
+    ]
+
+    expect(moveOrthogonalRouteSegment(route, 0, { x: 0, y: 40 })).toEqual([
+      { x: 100, y: 50 },
+      { x: 100, y: 90 },
+      { x: 200, y: 90 },
+      { x: 200, y: 150 },
+      { x: 300, y: 150 },
+    ])
+  })
+
+  it('orthogonalizes persisted waypoints so edited routes never render diagonals', () => {
+    const fromNode = createCanvasNode({ id: 'from', x: 0, y: 0, width: 100, height: 100 })
+    const toNode = createCanvasNode({ id: 'to', x: 300, y: 0, width: 100, height: 100 })
+    const edge = {
+      id: 'edge',
+      fromNode: 'from',
+      toNode: 'to',
+      fromAnchor: { side: 'right' as const, position: 0.5 },
+      toAnchor: { side: 'left' as const, position: 0.5 },
+      waypoints: [{ x: 200, y: 80 }],
+    }
+
+    const route = edgeRoutePoints(edge, fromNode, toNode)
+    expect(route.every((point, index) => {
+      const next = route[index + 1]
+      return !next || point.x === next.x || point.y === next.y
+    })).toBe(true)
+    expect(route.at(-2)).toMatchObject({ y: 50 })
+    expect(route.at(-1)).toEqual({ x: 300, y: 50 })
+  })
+
+  it('turns a dragged straight segment into an orthogonal elbow route', () => {
+    const route = [
+      { x: 100, y: 50 },
+      { x: 300, y: 50 },
+    ]
+
+    expect(moveOrthogonalRouteSegment(route, 0, { x: 0, y: 60 })).toEqual([
+      { x: 100, y: 50 },
+      { x: 100, y: 110 },
+      { x: 300, y: 110 },
+      { x: 300, y: 50 },
+    ])
   })
 
   it('places labels on the connector path instead of beside it', () => {

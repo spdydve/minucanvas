@@ -127,7 +127,7 @@ Notes:
 ## Manual QA checklist
 
 1. Create each shape tool: text, rectangle, diamond, ellipse, pill.
-2. Create arrows and lines between shapes.
+2. Create arrows and lines between shapes. Edges default to elbow routing and can be changed to straight or curved from the style toolbar. Select an elbow edge and drag a horizontal or vertical segment to adjust line positioning.
 3. Select, multi-select, marquee-select shapes and connectors.
 4. Move items with mouse and arrow keys.
 5. Resize shapes and groups.

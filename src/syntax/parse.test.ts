@@ -46,9 +46,29 @@ describe('compileMinuDiagramSyntax', () => {
     expect(result.document.nodes).toHaveLength(2)
     expect(result.document.nodes.find((node) => node.id === 'Valid')?.shape).toBe('diamond')
     expect(result.document.edges[0]).toMatchObject({ fromNode: 'Start', toNode: 'Valid', label: 'check', toEnd: 'arrow' })
+    expect(result.document.edges[0].toAnchor).toMatchObject({ side: 'left', position: 0 })
     expect(result.document.nodes.find((node) => node.id === 'Valid')?.x).toBeGreaterThan(
       result.document.nodes.find((node) => node.id === 'Start')?.x ?? 0,
     )
+  })
+
+  it('compiles explicit edge routing', () => {
+    const result = compileMinuDiagramSyntax('A > B [routing: straight]')
+
+    expect(result.document.edges[0].style?.routing).toBe('straight')
+  })
+
+  it('supports lineType as an edge routing alias', () => {
+    const result = compileMinuDiagramSyntax('A > B [lineType: curved]')
+
+    expect(result.document.edges[0].style?.routing).toBe('curved')
+  })
+
+  it('warns on unsupported edge routing', () => {
+    const result = compileMinuDiagramSyntax('A > B [routing: diagonal]')
+
+    expect(result.document.edges[0].style?.routing).toBeUndefined()
+    expect(result.diagnostics[0]).toMatchObject({ severity: 'warning' })
   })
 
   it('warns and falls back for unsupported shapes', () => {
@@ -56,5 +76,43 @@ describe('compileMinuDiagramSyntax', () => {
 
     expect(result.document.nodes[0].shape).toBe('rounded-rectangle')
     expect(result.diagnostics[0]?.severity).toBe('warning')
+  })
+
+  it('uses node positions to choose sides for back edges', () => {
+    const result = compileMinuDiagramSyntax(`
+      direction right
+      A > B > C
+      C > A
+    `)
+
+    const backEdge = result.document.edges.find((edge) => edge.fromNode === 'C' && edge.toNode === 'A')
+    expect(backEdge).toMatchObject({ fromSide: 'bottom', toSide: 'bottom', style: { routing: 'elbow' } })
+  })
+
+  it('center-aligns mixed-height nodes on the main horizontal lane', () => {
+    const result = compileMinuDiagramSyntax(`
+      direction right
+      User [shape: pill]
+      Login [shape: rectangle]
+      Valid [shape: diamond]
+      User > Login > Valid
+    `)
+
+    const centers = result.document.nodes.map((node) => node.y + node.height / 2)
+    expect(new Set(centers).size).toBe(1)
+  })
+
+  it('routes downward diamond branches into the top of the target', () => {
+    const result = compileMinuDiagramSyntax(`
+      direction right
+      Valid [shape: diamond]
+      Dashboard [shape: pill]
+      Error [shape: text]
+      Valid > Dashboard: yes
+      Valid > Error: no
+    `)
+
+    const edge = result.document.edges.find((item) => item.toNode === 'Error')
+    expect(edge).toMatchObject({ fromSide: 'bottom', toSide: 'top' })
   })
 })

@@ -125,7 +125,7 @@ Labels:
 
 ```txt
 A > B: request
-B > A: response [style: dashed, color: green]
+B > A: response [style: dashed, color: green, routing: elbow]
 ```
 
 Branching:
@@ -194,6 +194,7 @@ Recommended supported MVP properties:
 | `stroke` | node | node stroke |
 | `text` | node | text color |
 | `style` | edge | `solid`, `dashed`, `dotted`, `sketch` |
+| `routing` | edge | `elbow`, `straight`, `curved`; defaults to `elbow`. |
 | `width`, `height` | node | optional explicit dimensions |
 
 ## Example MVP input
@@ -229,6 +230,18 @@ type CompileResult = {
 ```
 
 Diagnostics should warn on unsupported properties/shapes rather than failing whenever possible.
+
+## Syntax discipline
+
+Keep authored syntax small and canonical. Prefer `routing` for line/arrow shape:
+
+```txt
+A > B [routing: elbow]
+A > B [routing: straight]
+A > B [routing: curved]
+```
+
+The parser may accept a few LLM-friendly aliases such as `route` or `lineType`, but these are advanced compatibility conveniences, not recommended authoring style. Documentation, examples, and future syntax export should emit canonical `routing`.
 
 ## API
 

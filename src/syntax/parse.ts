@@ -1,7 +1,9 @@
-import type { CanvasEdgeStyle, CanvasNodeStyle, CanvasStrokeStyle } from '../types'
+import type { CanvasEdgeRouting, CanvasEdgeStyle, CanvasNodeStyle, CanvasStrokeStyle } from '../types'
 import type { MinuDiagramConnectionOperator, MinuDiagramDiagnostic, MinuDiagramGroup, MinuDiagramNode, ParsedMinuDiagram } from './types'
 
 const CONNECTION_OPERATORS: MinuDiagramConnectionOperator[] = ['-->', '<>', '--', '>', '<', '-']
+const EDGE_ROUTINGS = ['elbow', 'straight', 'curved'] as const
+const EDGE_STROKE_STYLES = ['solid', 'dashed', 'dotted', 'sketch'] as const
 
 interface ParseLine {
   text: string
@@ -233,7 +235,7 @@ export function parseMinuDiagramSyntax(source: string): ParsedMinuDiagram {
         const rightIds = splitTopLevel(right, ',').map(unquote)
         for (const from of leftIds) {
           for (const to of rightIds) {
-            connections.push({ from, to, operator: op as MinuDiagramConnectionOperator, label, color: props.color, style: edgeStyleFromProps(props), line: entry.line })
+            connections.push({ from, to, operator: op as MinuDiagramConnectionOperator, label, color: props.color, style: edgeStyleFromProps(props, diagnostics, entry.line), line: entry.line })
             ensureNode(nodes, from, groupStack.at(-1), entry.line)
             ensureNode(nodes, to, groupStack.at(-1), entry.line)
           }
@@ -253,12 +255,20 @@ export function parseMinuDiagramSyntax(source: string): ParsedMinuDiagram {
   return { title, direction, nodes: [...nodes.values()], groups: [...groups.values()], connections, defaults, diagnostics }
 }
 
-function edgeStyleFromProps(props: Record<string, string>): CanvasEdgeStyle | undefined {
+function edgeStyleFromProps(props: Record<string, string>, diagnostics: MinuDiagramDiagnostic[], line: number): CanvasEdgeStyle | undefined {
   const style: CanvasEdgeStyle = {}
   if (props.color) style.stroke = props.color
   if (props.stroke) style.stroke = props.stroke
   if (props.strokeWidth) style.strokeWidth = Number(props.strokeWidth)
-  if (props.style) style.strokeStyle = props.style as CanvasStrokeStyle
+  if (props.style) {
+    if (EDGE_STROKE_STYLES.includes(props.style as CanvasStrokeStyle)) style.strokeStyle = props.style as CanvasStrokeStyle
+    else diagnostics.push({ severity: 'warning', message: `Unsupported edge style "${props.style}". Expected solid, dashed, dotted, or sketch.`, line })
+  }
+  const routing = props.routing ?? props.route ?? props.lineType
+  if (routing) {
+    if (EDGE_ROUTINGS.includes(routing as CanvasEdgeRouting)) style.routing = routing as CanvasEdgeRouting
+    else diagnostics.push({ severity: 'warning', message: `Unsupported edge routing "${routing}". Expected elbow, straight, or curved.`, line })
+  }
   return Object.keys(style).length ? style : undefined
 }
 

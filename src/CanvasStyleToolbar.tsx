@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type {
   CanvasChangeContext,
+  CanvasEdgeRouting,
   CanvasEdgeStyle,
   CanvasNodeStyle,
   CanvasSelection,
@@ -21,6 +22,7 @@ type StyleTarget = 'nodes' | 'edges' | 'both'
 
 const SHAPES: CanvasShape[] = ['text', 'rectangle', 'ellipse', 'diamond', 'pill', 'parallelogram', 'hexagon']
 const STROKE_STYLES: CanvasStrokeStyle[] = ['solid', 'dashed', 'dotted', 'sketch']
+const LINE_ROUTINGS: CanvasEdgeRouting[] = ['elbow', 'straight', 'curved']
 const LINE_WIDTHS = [1, 1.5, 2.5, 4]
 const FONT_SIZES = [
   { label: 'S', name: 'Small', value: 12 },
@@ -82,6 +84,7 @@ export function CanvasStyleToolbar<NodeExtra extends Record<string, unknown> = R
     ...selectedNodes.map((node) => node.style?.strokeStyle ?? 'solid'),
     ...selectedEdges.map((edge) => edge.style?.strokeStyle ?? 'solid'),
   ], 'solid' as CanvasStrokeStyle)
+  const routing = mixedValue(selectedEdges.map((edge) => edge.style?.routing ?? 'elbow'), 'elbow' as CanvasEdgeRouting)
   const fontSize = mixedValue(selectedNodes.map((node) => node.style?.fontSize ?? 14), 14)
   const fontSizeOption = FONT_SIZES.find((option) => option.value === fontSize)
   const textAlign = mixedValue(selectedNodes.map((node) => node.style?.textAlign ?? 'center'), 'center')
@@ -177,6 +180,16 @@ export function CanvasStyleToolbar<NodeExtra extends Record<string, unknown> = R
                 <span>{style}</span><svg viewBox="0 0 90 16" aria-hidden="true"><path d="M4 8h82" strokeDasharray={style === 'dashed' || style === 'sketch' ? '10 8' : style === 'dotted' ? '2 8' : undefined} /></svg>
               </button>
             ))}
+            {hasEdges ? (
+              <>
+                <div className="minucanvas-style-toolbar__divider" />
+                {LINE_ROUTINGS.map((item) => (
+                  <button key={item} type="button" className={routing === item ? 'is-active' : ''} onClick={() => updateStyles({}, { routing: item }, 'edges')}>
+                    <span>{item}</span><svg viewBox="0 0 90 24" aria-hidden="true">{item === 'straight' ? <path d="M8 16L82 8" /> : item === 'curved' ? <path d="M8 16C32 16 48 8 82 8" /> : <path d="M8 16H44V8H82" />}</svg>
+                  </button>
+                ))}
+              </>
+            ) : null}
             <div className="minucanvas-style-toolbar__divider" />
             {LINE_WIDTHS.map((width) => (
               <button key={width} type="button" className={strokeWidth === width ? 'is-active' : ''} onClick={() => updateStyles({ strokeWidth: width }, { strokeWidth: width })}>

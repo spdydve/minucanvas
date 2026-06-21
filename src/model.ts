@@ -20,7 +20,7 @@ export function cloneCanvas<NodeExtra extends Record<string, unknown>, EdgeExtra
 ): JsonCanvasDocument<NodeExtra, EdgeExtra> {
   return {
     nodes: document.nodes.map((node) => ({ ...node, style: node.style ? { ...node.style } : undefined })) as Array<CanvasNode<NodeExtra>>,
-    edges: document.edges.map((edge) => ({ ...edge, style: edge.style ? { ...edge.style } : undefined })) as Array<CanvasEdge<EdgeExtra>>,
+    edges: document.edges.map((edge) => ({ ...edge, style: edge.style ? { ...edge.style } : undefined, waypoints: edge.waypoints?.map((point) => ({ ...point })) })) as Array<CanvasEdge<EdgeExtra>>,
   }
 }
 
@@ -91,6 +91,7 @@ export function createCanvasEdge<EdgeExtra extends Record<string, unknown> = Rec
     label: partial.label,
     color: partial.color,
     style: partial.style,
+    waypoints: partial.waypoints?.map((point) => ({ ...point })),
   } as CanvasEdge<EdgeExtra>
 }
 
@@ -147,6 +148,7 @@ export function duplicateSelection<NodeExtra extends Record<string, unknown>, Ed
       fromNode: idMap.get(edge.fromNode) ?? edge.fromNode,
       toNode: idMap.get(edge.toNode) ?? edge.toNode,
       style: edge.style ? { ...edge.style } : undefined,
+      waypoints: edge.waypoints?.map((point) => ({ ...point })),
     })) as Array<CanvasEdge<EdgeExtra>>
 
   return {

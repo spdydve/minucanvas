@@ -177,8 +177,11 @@ type CanvasEdge = {
   fromEnd?: 'none' | 'arrow'
   toEnd?: 'none' | 'arrow'
   style?: CanvasEdgeStyle
+  waypoints?: Array<{ x: number; y: number }>
 }
 ```
+
+`waypoints` are optional editable route points in canvas coordinates. When present, the edge renders through those points between the start and end anchors.
 
 ### Precise anchors
 
@@ -198,7 +201,7 @@ type CanvasEdgeStyle = {
   stroke?: string
   strokeWidth?: number
   strokeStyle?: 'solid' | 'dashed' | 'dotted' | 'sketch'
-  routing?: 'straight' | 'curved' | 'elbow'
+  routing?: 'straight' | 'curved' | 'elbow' // defaults to 'elbow'
   opacity?: number
 }
 ```

@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import { CanvasStyleToolbar, CanvasToolbar, MinuCanvas } from '../src/index'
-import { defaultCanvasShortcuts } from '../src/index'
+import { compileMinuDiagramSyntax, defaultCanvasShortcuts } from '../src/index'
 import type { CanvasHandle, CanvasShapeTheme, CanvasThemeMode, CanvasTool, JsonCanvasDocument } from '../src/index'
 import '../src/theme/theme.css'
 import lightThemeUrl from '../src/theme/themes/light.css?url'
@@ -12,6 +12,22 @@ const THEME_URLS: Record<Exclude<ThemeChoice, 'base'>, string> = {
   light: lightThemeUrl,
   dark: darkThemeUrl,
 }
+
+const SAMPLE_DIAGRAM_SYNTAX = `diagram "Auth flow" {
+  direction right
+
+  User [shape: pill]
+  Login [shape: rectangle, label: "Login form"]
+  Valid [shape: diamond, label: "Valid?"]
+  Dashboard [shape: pill]
+  Error [shape: text, label: "Show error"]
+
+  User > Login
+  Login > Valid
+  Valid > Dashboard: yes
+  Valid > Error: no [style: dashed]
+  Error > Login
+}`
 
 const INITIAL_CANVAS: JsonCanvasDocument = {
   nodes: [
@@ -104,12 +120,22 @@ export default function App() {
   const [snapToGrid, setSnapToGrid] = useState(true)
   const [tool, setTool] = useState<CanvasTool>('select')
   const [selected, setSelected] = useState({ nodeIds: [] as string[], edgeIds: [] as string[] })
+  const [diagramSource, setDiagramSource] = useState(SAMPLE_DIAGRAM_SYNTAX)
+  const [diagramDiagnostics, setDiagramDiagnostics] = useState<string[]>([])
 
   const activeThemeUrl = theme === 'base' ? null : THEME_URLS[theme]
   const serialized = useMemo(() => JSON.stringify(document, null, 2), [document])
 
   async function handleDemoUpload(file: File) {
     return URL.createObjectURL(file)
+  }
+
+  function handleImportDiagramSyntax() {
+    const result = compileMinuDiagramSyntax(diagramSource)
+    setDocument(result.document)
+    setSelected({ nodeIds: [], edgeIds: [] })
+    setDiagramDiagnostics(result.diagnostics.map((diagnostic) => `${diagnostic.severity}: ${diagnostic.message}${diagnostic.line ? ` (line ${diagnostic.line})` : ''}`))
+    requestAnimationFrame(() => canvasRef.current?.fitView())
   }
 
   return (
@@ -192,6 +218,24 @@ export default function App() {
                 </li>
               ))}
             </ul>
+          </article>
+          <article>
+            <h2>Diagram syntax</h2>
+            <textarea
+              className="diagram-source"
+              value={diagramSource}
+              onChange={(event) => setDiagramSource(event.target.value)}
+              spellCheck={false}
+            />
+            <div className="diagram-source__actions">
+              <button onClick={handleImportDiagramSyntax}>Import syntax</button>
+              <button onClick={() => setDiagramSource(SAMPLE_DIAGRAM_SYNTAX)}>Reset sample</button>
+            </div>
+            {diagramDiagnostics.length > 0 ? (
+              <ul className="diagram-diagnostics">
+                {diagramDiagnostics.map((diagnostic) => <li key={diagnostic}>{diagnostic}</li>)}
+              </ul>
+            ) : null}
           </article>
           <article>
             <h2>JSON Canvas output</h2>

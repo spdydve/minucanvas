@@ -239,6 +239,21 @@
   fill: var(--mc-line-selected, var(--mc-edge-selected, var(--mc-canvas-accent)));
 }
 
+.minucanvas-edge-segment-handle {
+  stroke: transparent;
+  stroke-width: 14px;
+  fill: none;
+  pointer-events: stroke;
+}
+
+.minucanvas-edge-segment-handle--horizontal {
+  cursor: ns-resize;
+}
+
+.minucanvas-edge-segment-handle--vertical {
+  cursor: ew-resize;
+}
+
 .minucanvas-alignment-guide {
   stroke: var(--mc-canvas-accent);
   stroke-width: 1px;

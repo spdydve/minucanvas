@@ -1,4 +1,4 @@
-import type { CanvasEdge, CanvasEdgeAnchor, CanvasNode, CanvasViewport, JsonCanvasSide } from './types'
+import type { CanvasEdge, CanvasEdgeAnchor, CanvasEdgeStyle, CanvasNode, CanvasViewport, JsonCanvasSide } from './types'
 
 export interface Point {
   x: number
@@ -120,6 +120,10 @@ export function anchorForSide(node: CanvasNode, side?: JsonCanvasSide): Point {
   return nodeCenter(node)
 }
 
+export function defaultEdgeAnchorForSide(node: CanvasNode, side: JsonCanvasSide): CanvasEdgeAnchor {
+  return { side, position: node.shape === 'diamond' ? 0 : 0.5 }
+}
+
 export function autoSidePair(fromNode: CanvasNode, toNode: CanvasNode): { fromSide: JsonCanvasSide; toSide: JsonCanvasSide } {
   const from = nodeCenter(fromNode)
   const to = nodeCenter(toNode)
@@ -129,6 +133,47 @@ export function autoSidePair(fromNode: CanvasNode, toNode: CanvasNode): { fromSi
     return dx >= 0 ? { fromSide: 'right', toSide: 'left' } : { fromSide: 'left', toSide: 'right' }
   }
   return dy >= 0 ? { fromSide: 'bottom', toSide: 'top' } : { fromSide: 'top', toSide: 'bottom' }
+}
+
+export interface DefaultEdgeConnection {
+  fromSide: JsonCanvasSide
+  toSide: JsonCanvasSide
+  fromAnchor: CanvasEdgeAnchor
+  toAnchor: CanvasEdgeAnchor
+  style?: CanvasEdgeStyle
+}
+
+export function defaultEdgeConnection(fromNode: CanvasNode, toNode: CanvasNode): DefaultEdgeConnection {
+  const from = nodeCenter(fromNode)
+  const to = nodeCenter(toNode)
+  const dx = to.x - from.x
+  const dy = to.y - from.y
+  let fromSide: JsonCanvasSide
+  let toSide: JsonCanvasSide
+  let style: CanvasEdgeStyle | undefined
+
+  if (dx < 0) {
+    fromSide = 'bottom'
+    toSide = 'bottom'
+    style = { routing: 'elbow' }
+  } else if (fromNode.shape === 'diamond' && Math.abs(dy) > 40) {
+    fromSide = dy >= 0 ? 'bottom' : 'top'
+    toSide = dy >= 0 ? 'top' : 'bottom'
+  } else if (Math.abs(dx) >= Math.abs(dy)) {
+    fromSide = 'right'
+    toSide = 'left'
+  } else {
+    fromSide = dy >= 0 ? 'bottom' : 'top'
+    toSide = dy >= 0 ? 'top' : 'bottom'
+  }
+
+  return {
+    fromSide,
+    toSide,
+    fromAnchor: defaultEdgeAnchorForSide(fromNode, fromSide),
+    toAnchor: defaultEdgeAnchorForSide(toNode, toSide),
+    ...(style ? { style } : {}),
+  }
 }
 
 function controlOffset(side: JsonCanvasSide | undefined, magnitude: number): Point {
@@ -161,24 +206,14 @@ export function edgePath(edge: CanvasEdge, fromNode: CanvasNode, toNode: CanvasN
   const toSide = edge.toAnchor?.side ?? edge.toSide ?? sidePair.toSide
   const start = edge.fromAnchor ? anchorForEdgeAnchor(fromNode, edge.fromAnchor) : anchorForSide(fromNode, fromSide)
   const end = edge.toAnchor ? anchorForEdgeAnchor(toNode, edge.toAnchor) : anchorForSide(toNode, toSide)
-  const routing = edge.style?.routing ?? 'curved'
+  const routing = edge.style?.routing ?? 'elbow'
+  if (edge.waypoints?.length) {
+    return edgeRoutePoints(edge, fromNode, toNode).map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')
+  }
 
   if (routing === 'straight') return `M ${start.x} ${start.y} L ${end.x} ${end.y}`
 
-  if (routing === 'elbow') {
-    const outset = 32
-    const startOut = controlOffset(fromSide, outset)
-    const endOut = controlOffset(toSide, outset)
-    const startStub = { x: start.x + startOut.x, y: start.y + startOut.y }
-    const endStub = { x: end.x + endOut.x, y: end.y + endOut.y }
-
-    if (fromSide === 'left' || fromSide === 'right') {
-      const midX = (startStub.x + endStub.x) / 2
-      return `M ${start.x} ${start.y} L ${startStub.x} ${startStub.y} L ${midX} ${startStub.y} L ${midX} ${endStub.y} L ${endStub.x} ${endStub.y} L ${end.x} ${end.y}`
-    }
-    const midY = (startStub.y + endStub.y) / 2
-    return `M ${start.x} ${start.y} L ${startStub.x} ${startStub.y} L ${startStub.x} ${midY} L ${endStub.x} ${midY} L ${endStub.x} ${endStub.y} L ${end.x} ${end.y}`
-  }
+  if (routing === 'elbow') return pointsToPath(elbowRoutePoints(start, end, fromSide, toSide))
 
   const distance = Math.hypot(end.x - start.x, end.y - start.y)
   const magnitude = clamp(distance * 0.35, 48, 180)
@@ -198,6 +233,10 @@ function pointOnCubic(start: Point, c1: Point, c2: Point, end: Point, t: number)
 }
 
 function pointAtHalfPolylineLength(points: Point[]): Point {
+  return pointAtPolylineRatio(points, 0.5)
+}
+
+function pointAtPolylineRatio(points: Point[], ratio: number): Point {
   if (points.length === 0) return { x: 0, y: 0 }
   if (points.length === 1) return points[0] ?? { x: 0, y: 0 }
 
@@ -210,7 +249,7 @@ function pointAtHalfPolylineLength(points: Point[]): Point {
     }
   })
   const totalLength = segments.reduce((sum, segment) => sum + segment.length, 0)
-  let remaining = totalLength / 2
+  let remaining = totalLength * clamp(ratio, 0, 1)
 
   for (const segment of segments) {
     if (remaining <= segment.length) {
@@ -223,30 +262,183 @@ function pointAtHalfPolylineLength(points: Point[]): Point {
   return points[points.length - 1] ?? { x: 0, y: 0 }
 }
 
+function elbowRoutePoints(start: Point, end: Point, fromSide: JsonCanvasSide, toSide: JsonCanvasSide): Point[] {
+  const outset = 32
+  const startOut = controlOffset(fromSide, outset)
+  const endOut = controlOffset(toSide, outset)
+  const startStub = { x: start.x + startOut.x, y: start.y + startOut.y }
+  const endStub = { x: end.x + endOut.x, y: end.y + endOut.y }
+
+  if (fromSide === 'left' || fromSide === 'right') {
+    const midX = (startStub.x + endStub.x) / 2
+    return [start, startStub, { x: midX, y: startStub.y }, { x: midX, y: endStub.y }, endStub, end]
+  }
+  const midY = (startStub.y + endStub.y) / 2
+  return [start, startStub, { x: startStub.x, y: midY }, { x: endStub.x, y: midY }, endStub, end]
+}
+
+function pointsToPath(points: Point[]): string {
+  return points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')
+}
+
+function orthogonalCorner(a: Point, b: Point, preferHorizontalFirst: boolean): Point {
+  return preferHorizontalFirst ? { x: b.x, y: a.y } : { x: a.x, y: b.y }
+}
+
+function cornerCreatesBacktrack(previous: Point | undefined, current: Point, corner: Point, epsilon: number): boolean {
+  return Boolean(previous && (samePoint(previous, corner, epsilon) || collinear(previous, current, corner, epsilon)))
+}
+
+function orthogonalizeRoute(points: Point[], fromSide: JsonCanvasSide, toSide: JsonCanvasSide, epsilon = 0.5): Point[] {
+  const route: Point[] = []
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const current = points[index]
+    const next = points[index + 1]
+    if (!current || !next) continue
+    if (route.length === 0) route.push({ ...current })
+    if (Math.abs(current.x - next.x) > epsilon && Math.abs(current.y - next.y) > epsilon) {
+      const firstSegment = index === 0
+      const lastSegment = index === points.length - 2
+      const preferHorizontalFirst = firstSegment
+        ? fromSide === 'left' || fromSide === 'right'
+        : lastSegment
+          ? !(toSide === 'left' || toSide === 'right')
+          : true
+      const preferred = orthogonalCorner(current, next, preferHorizontalFirst)
+      const alternate = orthogonalCorner(current, next, !preferHorizontalFirst)
+      const previous = route.at(-2)
+      route.push(cornerCreatesBacktrack(previous, current, preferred, epsilon) && !cornerCreatesBacktrack(previous, current, alternate, epsilon) ? alternate : preferred)
+    }
+    route.push({ ...next })
+  }
+  return normalizeOrthogonalRoute(route, epsilon)
+}
+
+export function edgeRoutePoints(edge: CanvasEdge, fromNode: CanvasNode, toNode: CanvasNode): Point[] {
+  const sidePair = autoSidePair(fromNode, toNode)
+  const fromSide = edge.fromAnchor?.side ?? edge.fromSide ?? sidePair.fromSide
+  const toSide = edge.toAnchor?.side ?? edge.toSide ?? sidePair.toSide
+  const start = edge.fromAnchor ? anchorForEdgeAnchor(fromNode, edge.fromAnchor) : anchorForSide(fromNode, fromSide)
+  const end = edge.toAnchor ? anchorForEdgeAnchor(toNode, edge.toAnchor) : anchorForSide(toNode, toSide)
+  if (edge.waypoints?.length) {
+    const outset = 32
+    const startOut = controlOffset(fromSide, outset)
+    const endOut = controlOffset(toSide, outset)
+    const startStub = { x: start.x + startOut.x, y: start.y + startOut.y }
+    const endStub = { x: end.x + endOut.x, y: end.y + endOut.y }
+    return orthogonalizeRoute([start, startStub, ...edge.waypoints, endStub, end], fromSide, toSide)
+  }
+  if ((edge.style?.routing ?? 'elbow') === 'elbow') return elbowRoutePoints(start, end, fromSide, toSide)
+  return [start, end]
+}
+
+export function edgeWaypointHandlePoint(edge: CanvasEdge, fromNode: CanvasNode, toNode: CanvasNode): Point {
+  return pointAtPolylineRatio(edgeRoutePoints(edge, fromNode, toNode), 0.5)
+}
+
+function samePoint(a: Point, b: Point, epsilon: number): boolean {
+  return Math.abs(a.x - b.x) <= epsilon && Math.abs(a.y - b.y) <= epsilon
+}
+
+function collinear(a: Point, b: Point, c: Point, epsilon: number): boolean {
+  return (Math.abs(a.x - b.x) <= epsilon && Math.abs(b.x - c.x) <= epsilon)
+    || (Math.abs(a.y - b.y) <= epsilon && Math.abs(b.y - c.y) <= epsilon)
+}
+
+export function normalizeOrthogonalRoute(points: Point[], epsilon = 0.5): Point[] {
+  const deduped = points.reduce<Point[]>((next, point) => {
+    const previous = next.at(-1)
+    if (!previous || !samePoint(previous, point, epsilon)) next.push({ ...point })
+    return next
+  }, [])
+
+  let changed = true
+  while (changed) {
+    changed = false
+    for (let index = 1; index < deduped.length - 1; index += 1) {
+      const previous = deduped[index - 1]
+      const current = deduped[index]
+      const next = deduped[index + 1]
+      if (previous && current && next && collinear(previous, current, next, epsilon)) {
+        deduped.splice(index, 1)
+        changed = true
+        break
+      }
+    }
+  }
+
+  return deduped
+}
+
+export function moveOrthogonalRouteSegment(points: Point[], segmentIndex: number, delta: Point): Point[] {
+  const a = points[segmentIndex]
+  const b = points[segmentIndex + 1]
+  if (!a || !b) return normalizeOrthogonalRoute(points)
+
+  const horizontal = Math.abs(b.x - a.x) >= Math.abs(b.y - a.y)
+  const sameRun = (p1: Point, p2: Point): boolean => horizontal ? Math.abs(p1.y - p2.y) <= 0.5 : Math.abs(p1.x - p2.x) <= 0.5
+  let runStart = segmentIndex
+  let runEnd = segmentIndex + 1
+
+  while (runStart > 0) {
+    const previous = points[runStart - 1]
+    const current = points[runStart]
+    if (!previous || !current || !sameRun(previous, current)) break
+    runStart -= 1
+  }
+  while (runEnd < points.length - 1) {
+    const current = points[runEnd]
+    const next = points[runEnd + 1]
+    if (!current || !next || !sameRun(current, next)) break
+    runEnd += 1
+  }
+
+  const lastIndex = points.length - 1
+  const result: Point[] = points.slice(0, runStart).map((point) => ({ ...point }))
+
+  if (horizontal) {
+    const y = a.y + delta.y
+    if (runStart === 0) result.push({ ...points[0]! }, { x: points[0]!.x, y })
+    else result.push({ x: points[runStart]!.x, y })
+
+    for (let index = runStart + 1; index < runEnd; index += 1) {
+      result.push({ x: points[index]!.x, y })
+    }
+
+    if (runEnd === lastIndex) result.push({ x: points[lastIndex]!.x, y }, { ...points[lastIndex]! })
+    else result.push({ x: points[runEnd]!.x, y })
+  } else {
+    const x = a.x + delta.x
+    if (runStart === 0) result.push({ ...points[0]! }, { x, y: points[0]!.y })
+    else result.push({ x, y: points[runStart]!.y })
+
+    for (let index = runStart + 1; index < runEnd; index += 1) {
+      result.push({ x, y: points[index]!.y })
+    }
+
+    if (runEnd === lastIndex) result.push({ x, y: points[lastIndex]!.y }, { ...points[lastIndex]! })
+    else result.push({ x, y: points[runEnd]!.y })
+  }
+
+  if (runEnd < lastIndex) {
+    result.push(...points.slice(runEnd + 1).map((point) => ({ ...point })))
+  }
+
+  return normalizeOrthogonalRoute(result)
+}
+
 export function edgeLabelPoint(edge: CanvasEdge, fromNode: CanvasNode, toNode: CanvasNode): Point {
   const sidePair = autoSidePair(fromNode, toNode)
   const fromSide = edge.fromAnchor?.side ?? edge.fromSide ?? sidePair.fromSide
   const toSide = edge.toAnchor?.side ?? edge.toSide ?? sidePair.toSide
   const start = edge.fromAnchor ? anchorForEdgeAnchor(fromNode, edge.fromAnchor) : anchorForSide(fromNode, fromSide)
   const end = edge.toAnchor ? anchorForEdgeAnchor(toNode, edge.toAnchor) : anchorForSide(toNode, toSide)
-  const routing = edge.style?.routing ?? 'curved'
+  const routing = edge.style?.routing ?? 'elbow'
+  if (edge.waypoints?.length) return pointAtHalfPolylineLength(edgeRoutePoints(edge, fromNode, toNode))
 
   if (routing === 'straight') return { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 }
 
-  if (routing === 'elbow') {
-    const outset = 32
-    const startOut = controlOffset(fromSide, outset)
-    const endOut = controlOffset(toSide, outset)
-    const startStub = { x: start.x + startOut.x, y: start.y + startOut.y }
-    const endStub = { x: end.x + endOut.x, y: end.y + endOut.y }
-
-    if (fromSide === 'left' || fromSide === 'right') {
-      const midX = (startStub.x + endStub.x) / 2
-      return pointAtHalfPolylineLength([start, startStub, { x: midX, y: startStub.y }, { x: midX, y: endStub.y }, endStub, end])
-    }
-    const midY = (startStub.y + endStub.y) / 2
-    return pointAtHalfPolylineLength([start, startStub, { x: startStub.x, y: midY }, { x: endStub.x, y: midY }, endStub, end])
-  }
+  if (routing === 'elbow') return pointAtHalfPolylineLength(elbowRoutePoints(start, end, fromSide, toSide))
 
   const distance = Math.hypot(end.x - start.x, end.y - start.y)
   const magnitude = clamp(distance * 0.35, 48, 180)

@@ -105,6 +105,13 @@ export type CanvasEdge<EdgeExtra extends Record<string, unknown> = Record<string
   label?: string
   color?: string
   style?: CanvasEdgeStyle
+  /** Optional editable route points in canvas coordinates. */
+  waypoints?: Point[]
+}
+
+export interface Point {
+  x: number
+  y: number
 }
 
 export interface CanvasViewport {

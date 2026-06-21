@@ -14,7 +14,7 @@ import {
   type PointerEvent,
   type ReactElement,
 } from 'react'
-import { anchorForEdgeAnchor, autoSidePair, canvasBounds, clientToCanvas, edgeAnchorForPoint, edgeLabelPoint, edgePath, sideFacingPoint, sideForPoint, type Point } from './geometry'
+import { anchorForEdgeAnchor, canvasBounds, clientToCanvas, defaultEdgeAnchorForSide, defaultEdgeConnection, edgeAnchorForPoint, edgeLabelPoint, edgePath, edgeRoutePoints, moveOrthogonalRouteSegment, sideForPoint, type Point } from './geometry'
 import {
   alignSelection as alignSelectionInDocument,
   bringSelectionForward,
@@ -86,6 +86,13 @@ type DragState<NodeExtra extends Record<string, unknown>> =
       kind: 'edge-anchor'
       edgeId: string
       endpoint: 'from' | 'to'
+    }
+  | {
+      kind: 'edge-segment'
+      edgeId: string
+      segmentIndex: number
+      startPoint: Point
+      originalPoints: Point[]
     }
   | {
       kind: 'resize-node'
@@ -480,23 +487,18 @@ function recenterMovedNodeEdges<NodeExtra extends Record<string, unknown>, EdgeE
 
       // Re-evaluate both endpoints after a connected shape moves/resizes.
       // Preserving the old side can leave connectors visually crossing through
-      // shapes after layout changes. Recomputing both sides makes the line face
-      // the opposite node and anchors it at the center of that side.
-      const fromSide = sideFacingPoint(fromNode, {
-        x: toNode.x + toNode.width / 2,
-        y: toNode.y + toNode.height / 2,
-      })
-      const toSide = sideFacingPoint(toNode, {
-        x: fromNode.x + fromNode.width / 2,
-        y: fromNode.y + fromNode.height / 2,
-      })
+      // shapes after layout changes. Shared defaults also keep diamond anchors
+      // on cardinal points and route back edges consistently.
+      const defaults = defaultEdgeConnection(fromNode, toNode)
+      const style = { ...(defaults.style ?? {}), ...(edge.style ?? {}) }
 
       return {
         ...edge,
-        fromSide,
-        fromAnchor: { side: fromSide, position: 0.5 },
-        toSide,
-        toAnchor: { side: toSide, position: 0.5 },
+        fromSide: defaults.fromSide,
+        fromAnchor: defaults.fromAnchor,
+        toSide: defaults.toSide,
+        toAnchor: defaults.toAnchor,
+        ...(Object.keys(style).length > 0 ? { style } : {}),
       }
     }),
   }
@@ -768,11 +770,20 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
       const fromNode = nodeById.get(fromNodeId)
       const toNode = nodeById.get(toNodeId)
       if (!fromNode || !toNode) return null
-      const edge = createCanvasEdge<EdgeExtra>(fromNodeId, toNodeId, {
+      const defaults = defaultEdgeConnection(fromNode, toNode)
+      const fromSide = partial.fromAnchor?.side ?? partial.fromSide ?? defaults.fromSide
+      const toSide = partial.toAnchor?.side ?? partial.toSide ?? defaults.toSide
+      const style = { ...(defaults.style ?? {}), ...(partial.style ?? {}) }
+      const edgePartial = {
+        ...defaults,
         ...partial,
-        fromSide: partial.fromAnchor?.side ?? partial.fromSide ?? autoSidePair(fromNode, toNode).fromSide,
-        toSide: partial.toAnchor?.side ?? partial.toSide ?? autoSidePair(fromNode, toNode).toSide,
-      })
+        fromSide,
+        toSide,
+        fromAnchor: partial.fromAnchor ?? (partial.fromSide ? defaultEdgeAnchorForSide(fromNode, partial.fromSide) : defaults.fromAnchor),
+        toAnchor: partial.toAnchor ?? (partial.toSide ? defaultEdgeAnchorForSide(toNode, partial.toSide) : defaults.toAnchor),
+        ...(Object.keys(style).length > 0 ? { style } : {}),
+      } as Partial<CanvasEdge<EdgeExtra>>
+      const edge = createCanvasEdge<EdgeExtra>(fromNodeId, toNodeId, edgePartial)
       emitChange({ ...value, edges: [...value.edges, edge] }, 'create-edge')
       emitSelection({ nodeIds: [], edgeIds: [edge.id] })
       return edge
@@ -932,8 +943,8 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
         text: undefined,
       } as Partial<CanvasNode<NodeExtra>>)
       const edge = createCanvasEdge<EdgeExtra>(sourceNode.id, node.id, {
-        fromAnchor: { side: direction, position: 0.5 },
-        toAnchor: { side: oppositeSide(direction), position: 0.5 },
+        fromAnchor: defaultEdgeAnchorForSide(sourceNode, direction),
+        toAnchor: defaultEdgeAnchorForSide(node, oppositeSide(direction)),
         toEnd: 'arrow',
       } as Partial<CanvasEdge<EdgeExtra>>)
 
@@ -994,6 +1005,26 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
       emitChange({ ...value, edges: nextEdges }, 'update-edge')
     },
     [emitChange, readOnly, value],
+  )
+
+  const updateEdgeSegment = useCallback(
+    (edgeId: string, segmentIndex: number, originalPoints: Point[], startPoint: Point, point: Point) => {
+      if (readOnly || originalPoints.length < 2) return
+      const dx = point.x - startPoint.x
+      const dy = point.y - startPoint.y
+      const nextPoints = moveOrthogonalRouteSegment(originalPoints, segmentIndex, { x: dx, y: dy })
+      const nextEdges = value.edges.map((edge) => {
+        if (edge.id !== edgeId) return edge
+        const fromNode = nodeById.get(edge.fromNode)
+        const toNode = nodeById.get(edge.toNode)
+        if (!fromNode || !toNode || nextPoints.length < 2) return edge
+
+        const waypoints = nextPoints.slice(1, -1).map((routePoint) => ({ ...routePoint }))
+        return { ...edge, waypoints }
+      })
+      emitChange({ ...value, edges: nextEdges }, 'update-edge')
+    },
+    [emitChange, nodeById, readOnly, value],
   )
 
   const updateEdgeLabel = useCallback(
@@ -1425,6 +1456,11 @@ ${nodeMarkup}
       return
     }
 
+    if (drag.kind === 'edge-segment') {
+      updateEdgeSegment(drag.edgeId, drag.segmentIndex, drag.originalPoints, drag.startPoint, point)
+      return
+    }
+
     if (drag.kind === 'selection-box') {
       const nextDrag = { ...drag, pointer: point }
       dragRef.current = nextDrag
@@ -1442,14 +1478,10 @@ ${nodeMarkup}
         const fromNode = nodeById.get(edge.fromNode)
         const toNode = nodeById.get(edge.toNode)
         if (!fromNode || !toNode) return false
-        const fromPoint = anchorForEdgeAnchor(fromNode, edge.fromAnchor ?? {
-          side: edge.fromSide ?? sideForPoint(fromNode, { x: toNode.x + toNode.width / 2, y: toNode.y + toNode.height / 2 }),
-          position: 0.5,
-        })
-        const toPoint = anchorForEdgeAnchor(toNode, edge.toAnchor ?? {
-          side: edge.toSide ?? sideForPoint(toNode, { x: fromNode.x + fromNode.width / 2, y: fromNode.y + fromNode.height / 2 }),
-          position: 0.5,
-        })
+        const fromSide = edge.fromSide ?? sideForPoint(fromNode, { x: toNode.x + toNode.width / 2, y: toNode.y + toNode.height / 2 })
+        const toSide = edge.toSide ?? sideForPoint(toNode, { x: fromNode.x + fromNode.width / 2, y: fromNode.y + fromNode.height / 2 })
+        const fromPoint = anchorForEdgeAnchor(fromNode, edge.fromAnchor ?? defaultEdgeAnchorForSide(fromNode, fromSide))
+        const toPoint = anchorForEdgeAnchor(toNode, edge.toAnchor ?? defaultEdgeAnchorForSide(toNode, toSide))
         return rectsOverlap(box, rectFromLine(fromPoint, toPoint, 10))
       }).map((edge) => edge.id)
       emitSelection({
@@ -1529,7 +1561,7 @@ ${nodeMarkup}
     const movedSet = new Set(drag.nodeIds)
     const changedGroups = new Set(moved.nodes.flatMap((node) => node.groupId && movedSet.has(node.id) && !movedSet.has(node.groupId) ? [node.groupId] : []))
     emitChange(recenterMovedNodeEdges(fitGroupsToChildren(moved, changedGroups), drag.nodeIds), 'move-node')
-  }, [activeGroupId, connectorAnchorAtPoint, emitChange, gridSize, nodeById, pointFromEvent, setViewport, snapToGrid, updateEdgeAnchor, value, viewport.zoom])
+  }, [activeGroupId, connectorAnchorAtPoint, emitChange, gridSize, nodeById, pointFromEvent, setViewport, snapToGrid, updateEdgeAnchor, updateEdgeSegment, value, viewport.zoom])
 
   const handlePointerUp = useCallback((event: PointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current
@@ -2170,14 +2202,10 @@ ${nodeMarkup}
             const fromNode = nodeById.get(edge.fromNode)
             const toNode = nodeById.get(edge.toNode)
             if (!fromNode || !toNode) return null
-            const fromAnchor = edge.fromAnchor ?? {
-              side: edge.fromSide ?? sideForPoint(fromNode, { x: toNode.x + toNode.width / 2, y: toNode.y + toNode.height / 2 }),
-              position: 0.5,
-            }
-            const toAnchor = edge.toAnchor ?? {
-              side: edge.toSide ?? sideForPoint(toNode, { x: fromNode.x + fromNode.width / 2, y: fromNode.y + fromNode.height / 2 }),
-              position: 0.5,
-            }
+            const fromSide = edge.fromSide ?? sideForPoint(fromNode, { x: toNode.x + toNode.width / 2, y: toNode.y + toNode.height / 2 })
+            const toSide = edge.toSide ?? sideForPoint(toNode, { x: fromNode.x + fromNode.width / 2, y: fromNode.y + fromNode.height / 2 })
+            const fromAnchor = edge.fromAnchor ?? defaultEdgeAnchorForSide(fromNode, fromSide)
+            const toAnchor = edge.toAnchor ?? defaultEdgeAnchorForSide(toNode, toSide)
             const fromPoint = anchorForEdgeAnchor(fromNode, fromAnchor)
             const toPoint = anchorForEdgeAnchor(toNode, toAnchor)
             return (
@@ -2433,18 +2461,40 @@ ${nodeMarkup}
             const fromNode = nodeById.get(edge.fromNode)
             const toNode = nodeById.get(edge.toNode)
             if (!fromNode || !toNode) return null
-            const fromAnchor = edge.fromAnchor ?? {
-              side: edge.fromSide ?? sideForPoint(fromNode, { x: toNode.x + toNode.width / 2, y: toNode.y + toNode.height / 2 }),
-              position: 0.5,
-            }
-            const toAnchor = edge.toAnchor ?? {
-              side: edge.toSide ?? sideForPoint(toNode, { x: fromNode.x + fromNode.width / 2, y: fromNode.y + fromNode.height / 2 }),
-              position: 0.5,
-            }
+            const fromSide = edge.fromSide ?? sideForPoint(fromNode, { x: toNode.x + toNode.width / 2, y: toNode.y + toNode.height / 2 })
+            const toSide = edge.toSide ?? sideForPoint(toNode, { x: fromNode.x + fromNode.width / 2, y: fromNode.y + fromNode.height / 2 })
+            const fromAnchor = edge.fromAnchor ?? defaultEdgeAnchorForSide(fromNode, fromSide)
+            const toAnchor = edge.toAnchor ?? defaultEdgeAnchorForSide(toNode, toSide)
             const fromPoint = anchorForEdgeAnchor(fromNode, fromAnchor)
             const toPoint = anchorForEdgeAnchor(toNode, toAnchor)
+            const routePoints = edgeRoutePoints(edge, fromNode, toNode)
             return (
               <g key={`${edge.id}-overlay-handles`} className="minucanvas-edge-handles">
+                {routePoints.slice(0, -1).map((routePoint, index) => {
+                  const nextPoint = routePoints[index + 1]
+                  if (!nextPoint) return null
+                  const length = Math.hypot(nextPoint.x - routePoint.x, nextPoint.y - routePoint.y)
+                  if (length < 24) return null
+                  const horizontal = Math.abs(nextPoint.x - routePoint.x) >= Math.abs(nextPoint.y - routePoint.y)
+                  return (
+                    <line
+                      key={`segment-${index}`}
+                      className={`minucanvas-edge-segment-handle minucanvas-edge-segment-handle--${horizontal ? 'horizontal' : 'vertical'}`}
+                      x1={routePoint.x}
+                      y1={routePoint.y}
+                      x2={nextPoint.x}
+                      y2={nextPoint.y}
+                      onPointerDown={(event) => {
+                        event.stopPropagation()
+                        event.currentTarget.setPointerCapture(event.pointerId)
+                        emitSelection({ nodeIds: [], edgeIds: [edge.id] })
+                        undoTransactionRef.current = cloneCanvas(value)
+                        undoTransactionPushedRef.current = false
+                        dragRef.current = { kind: 'edge-segment', edgeId: edge.id, segmentIndex: index, startPoint: pointFromEvent(event), originalPoints: routePoints.map((point) => ({ ...point })) }
+                      }}
+                    />
+                  )
+                })}
                 <circle
                   className="minucanvas-edge-handle minucanvas-edge-handle--from"
                   cx={fromPoint.x}
@@ -2473,6 +2523,7 @@ ${nodeMarkup}
                     dragRef.current = { kind: 'edge-anchor', edgeId: edge.id, endpoint: 'to' }
                   }}
                 />
+
               </g>
             )
           })}

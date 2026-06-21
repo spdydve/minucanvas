@@ -1,5 +1,6 @@
+import { defaultEdgeConnection } from '../geometry'
 import { createCanvasEdge, createCanvasNode } from '../model'
-import type { CanvasEdge, CanvasNode, CanvasShape, JsonCanvasEdgeEnd, JsonCanvasSide } from '../types'
+import type { CanvasEdge, CanvasNode, CanvasShape, JsonCanvasEdgeEnd } from '../types'
 import { parseMinuDiagramSyntax } from './parse'
 import type { MinuDiagramCompileOptions, MinuDiagramCompileResult, MinuDiagramConnection, MinuDiagramDiagnostic, MinuDiagramNode, ParsedMinuDiagram } from './types'
 
@@ -63,7 +64,8 @@ export function compileParsedMinuDiagram(parsed: ParsedMinuDiagram, options: Min
     nodes.push(createNode(node, nodePositions.get(node.id) ?? origin, diagnostics))
   }
 
-  const edges = parsed.connections.map((connection, index) => createEdge(connection, index))
+  const nodeLookup = new Map(nodes.map((node) => [node.id, node]))
+  const edges = parsed.connections.map((connection, index) => createEdge(connection, index, nodeLookup))
   const documentNodes = fitGroups([...groupNodes, ...nodes], groupPadding)
   return { document: { nodes: documentNodes, edges }, parsed, diagnostics }
 }
@@ -118,21 +120,26 @@ function sizeForNode(node: MinuDiagramNode, type: CanvasNode['type'], shape: Can
   return { width: node.width ?? DEFAULT_WIDTH, height: node.height ?? DEFAULT_HEIGHT }
 }
 
-function createEdge(connection: MinuDiagramConnection, index: number): CanvasEdge {
+function createEdge(connection: MinuDiagramConnection, index: number, nodes: Map<string, CanvasNode>): CanvasEdge {
   const { fromNode, toNode, fromEnd, toEnd } = edgeDirection(connection)
-  const { fromSide, toSide } = sidePair(connection.operator)
+  const from = nodes.get(fromNode)
+  const to = nodes.get(toNode)
+  const defaults = from && to ? defaultEdgeConnection(from, to) : undefined
+  const fromSide = defaults?.fromSide ?? 'right'
+  const toSide = defaults?.toSide ?? 'left'
   const partial: Partial<CanvasEdge> = {
     id: `edge-${index + 1}`,
     fromSide,
     toSide,
-    fromAnchor: { side: fromSide, position: 0.5 },
-    toAnchor: { side: toSide, position: 0.5 },
+    fromAnchor: defaults?.fromAnchor ?? { side: fromSide, position: 0.5 },
+    toAnchor: defaults?.toAnchor ?? { side: toSide, position: 0.5 },
     fromEnd,
     toEnd,
   }
   if (connection.label) partial.label = connection.label
   if (connection.color) partial.color = connection.color
-  if (connection.style) partial.style = connection.style
+  const style = { ...(defaults?.style ?? {}), ...(connection.style ?? {}) }
+  if (Object.keys(style).length > 0) partial.style = style
   return createCanvasEdge(fromNode, toNode, partial)
 }
 
@@ -143,26 +150,44 @@ function edgeDirection(connection: MinuDiagramConnection): { fromNode: string; t
   return { fromNode: connection.from, toNode: connection.to, fromEnd: 'none', toEnd: 'arrow' }
 }
 
-function sidePair(_operator: MinuDiagramConnection['operator']): { fromSide: JsonCanvasSide; toSide: JsonCanvasSide } {
-  return { fromSide: 'right', toSide: 'left' }
-}
-
 function rankNodes(parsed: ParsedMinuDiagram): Map<string, number> {
   const ranks = new Map(parsed.nodes.map((node) => [node.id, 0]))
+  const dag = new Map<string, Set<string>>()
+
+  for (const connection of parsed.connections) {
+    const from = connection.operator === '<' ? connection.to : connection.from
+    const to = connection.operator === '<' ? connection.from : connection.to
+    if (from === to || pathExists(dag, to, from)) continue
+    dag.set(from, new Set([...(dag.get(from) ?? []), to]))
+  }
+
   for (let pass = 0; pass < parsed.nodes.length; pass += 1) {
     let changed = false
-    for (const connection of parsed.connections) {
-      const from = connection.operator === '<' ? connection.to : connection.from
-      const to = connection.operator === '<' ? connection.from : connection.to
-      const nextRank = (ranks.get(from) ?? 0) + 1
-      if (nextRank > (ranks.get(to) ?? 0)) {
-        ranks.set(to, nextRank)
-        changed = true
+    for (const [from, targets] of dag) {
+      for (const to of targets) {
+        const nextRank = (ranks.get(from) ?? 0) + 1
+        if (nextRank > (ranks.get(to) ?? 0)) {
+          ranks.set(to, nextRank)
+          changed = true
+        }
       }
     }
     if (!changed) break
   }
   return ranks
+}
+
+function pathExists(graph: Map<string, Set<string>>, from: string, to: string): boolean {
+  const visited = new Set<string>()
+  const stack = [from]
+  while (stack.length > 0) {
+    const current = stack.pop()
+    if (!current || visited.has(current)) continue
+    if (current === to) return true
+    visited.add(current)
+    stack.push(...(graph.get(current) ?? []))
+  }
+  return false
 }
 
 function placeNodes(
@@ -177,17 +202,38 @@ function placeNodes(
     const rank = ranks.get(node.id) ?? 0
     byRank.set(rank, [...(byRank.get(rank) ?? []), node])
   }
+  const allSizes = parsed.nodes.map(estimatedNodeSize)
+  const laneHeight = Math.max(DEFAULT_HEIGHT, ...allSizes.map((size) => size.height))
+  const laneWidth = Math.max(DEFAULT_WIDTH, ...allSizes.map((size) => size.width))
   const positions = new Map<string, { x: number; y: number }>()
   for (const [rank, nodes] of [...byRank.entries()].sort((a, b) => a[0] - b[0])) {
+    const sizes = nodes.map(estimatedNodeSize)
+    const rowHeight = parsed.direction === 'left' || parsed.direction === 'right' ? laneHeight : Math.max(DEFAULT_HEIGHT, ...sizes.map((size) => size.height))
+    const columnWidth = parsed.direction === 'up' || parsed.direction === 'down' ? laneWidth : Math.max(DEFAULT_WIDTH, ...sizes.map((size) => size.width))
     nodes.forEach((node, index) => {
+      const size = sizes[index] ?? { width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT }
       const primary = rank * (DEFAULT_WIDTH + rankGap)
-      const secondary = index * (DEFAULT_HEIGHT + nodeGap)
-      const x = parsed.direction === 'left' ? origin.x - primary : parsed.direction === 'right' ? origin.x + primary : origin.x + secondary
-      const y = parsed.direction === 'up' ? origin.y - primary : parsed.direction === 'down' ? origin.y + primary : origin.y + secondary
+      const secondary = index * (rowHeight + nodeGap)
+      const x = parsed.direction === 'left'
+        ? origin.x - primary + (columnWidth - size.width) / 2
+        : parsed.direction === 'right'
+          ? origin.x + primary + (columnWidth - size.width) / 2
+          : origin.x + secondary
+      const y = parsed.direction === 'up'
+        ? origin.y - primary + (rowHeight - size.height) / 2
+        : parsed.direction === 'down'
+          ? origin.y + primary + (rowHeight - size.height) / 2
+          : origin.y + secondary + (rowHeight - size.height) / 2
       positions.set(node.id, { x, y })
     })
   }
   return positions
+}
+
+function estimatedNodeSize(node: MinuDiagramNode): { width: number; height: number } {
+  const type = node.type ?? typeForNode(node)
+  const shape = node.type === 'image' || node.type === 'link' ? 'text' : node.shape ? (SHAPE_ALIASES[node.shape] ?? 'rounded-rectangle') : 'rounded-rectangle'
+  return sizeForNode(node, type, shape)
 }
 
 function fitGroups(nodes: CanvasNode[], padding: number): CanvasNode[] {
