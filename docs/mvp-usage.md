@@ -1,14 +1,128 @@
 # MinuCanvas MVP Usage Notes
 
+This guide covers the current MVP editor workflow: creating diagrams from syntax, editing them visually, using keyboard shortcuts, importing external content, grouping/layering, and exporting.
+
+## Basic editor setup
+
+```tsx
+import { useRef, useState } from 'react'
+import { MinuCanvas, type CanvasHandle, type JsonCanvasDocument } from '@dpklabs/minucanvas'
+import '@dpklabs/minucanvas/theme.css'
+
+const initial: JsonCanvasDocument = { nodes: [], edges: [] }
+
+export function CanvasExample() {
+  const canvasRef = useRef<CanvasHandle>(null)
+  const [value, setValue] = useState(initial)
+
+  return (
+    <MinuCanvas
+      ref={canvasRef}
+      value={value}
+      onChange={setValue}
+      canvasTheme="system"
+      shapeTheme="outline"
+      grid
+      snapToGrid
+      autoFit
+    />
+  )
+}
+```
+
+## Creating a canvas from diagram syntax
+
+MinuCanvas includes a small LLM-friendly diagram syntax compiler as package utilities. The compiler is separate from the React UI, so host apps decide where to show textareas, diagnostics, import buttons, and reset controls.
+
+```tsx
+import { compileMinuDiagramSyntax } from '@dpklabs/minucanvas/syntax'
+
+const source = `diagram "Auth flow" {
+  direction right
+  User [shape: pill]
+  Login [shape: rectangle, label: "Login form"]
+  Valid [shape: diamond, label: "Valid?"]
+  Dashboard [shape: pill]
+  Error [shape: text, label: "Show error", stroke: "#64748b", style: dashed]
+
+  User > Login
+  Login > Valid
+  Valid > Dashboard: yes
+  Valid > Error: no [style: dashed]
+  Error > Login
+}`
+
+const { document, diagnostics } = compileMinuDiagramSyntax(source)
+setValue(document)
+canvasRef.current?.fitView()
+```
+
+Useful syntax features:
+
+- `diagram "Title" { ... }`
+- `direction right | down | up | left`
+- node declarations: `Id [shape: diamond, label: "Approved?"]`
+- groups: `group Backend { Api; Worker }`
+- edges: `A > B`, `A - B`, `A <> B`, `A --> B`
+- edge labels: `A > B: yes`
+- edge styles: `A > B [style: dashed, routing: elbow]`
+- canonical routing values: `elbow`, `straight`, `curved`
+
+See [`minu-diagram-syntax.md`](./minu-diagram-syntax.md) for the full syntax proposal and API details.
+
 ## Core editing
 
 - Select: click a shape, text, image, link, group, line, or arrow.
 - Multi-select: `Shift` + click items, or drag a marquee selection box with the select tool.
 - Move: drag selected items, or use arrow keys. With snap enabled, arrow movement uses the grid size.
+- Keyboard navigation: `Alt/Option + Arrow` jumps selection to the nearest node or connector in that direction.
 - Pan: use the hand tool, hold `Shift`/`Space`, middle mouse, or two-finger trackpad scroll.
 - Zoom: pinch/ctrl-wheel/meta-wheel zooms the canvas around the pointer.
 - Resize: drag selected item resize handles.
+- Change shape: select one or more nodes and press `Tab` to open the compact shape switcher.
 - Add connected shapes: select a non-group shape and click a `+` handle, or use `Cmd/Ctrl + Arrow`.
+
+## Keyboard shortcuts
+
+| Shortcut | Action |
+| --- | --- |
+| `V` / `1` | Select / move tool |
+| `H` | Hand / pan tool |
+| `A` / `5` | Arrow connector tool |
+| `L` / `7` | Line connector tool |
+| `T` / `6` | Text tool |
+| `R` / `2` | Rectangle tool |
+| `D` / `3` | Diamond tool |
+| `O` / `4` | Ellipse/circle tool |
+| `P` / `8` | Pill tool |
+| Arrow keys | Move selected nodes by the grid amount when snap is enabled, otherwise by a small step |
+| `Alt/Option + Arrow` | Navigate selection spatially between nodes/connectors |
+| `Tab` | Open selected node shape switcher |
+| `Enter` / `F2` | Edit selected node or edge label |
+| `Escape` | Clear selection, close menus/dialogs, exit editing/group mode |
+| `Delete` / `Backspace` | Delete selection |
+| `Cmd/Ctrl + C` | Copy selection |
+| `Cmd/Ctrl + X` | Cut selection |
+| `Cmd/Ctrl + V` | Paste selection or external clipboard content |
+| `Cmd/Ctrl + D` | Duplicate selection |
+| `Cmd/Ctrl + Z` | Undo |
+| `Cmd/Ctrl + Shift + Z` / `Cmd/Ctrl + Y` | Redo |
+| `Cmd/Ctrl + G` | Group selection |
+| `Cmd/Ctrl + Shift + G` | Ungroup selection |
+| `Cmd/Ctrl + ]` | Bring selection to front |
+| `Cmd/Ctrl + [` | Send selection to back |
+| `Cmd/Ctrl + +` / `Cmd/Ctrl + -` | Zoom in / out |
+| `Cmd/Ctrl + 0` | Reset view |
+| `Cmd/Ctrl + Arrow` | Add a connected shape in that direction |
+
+## Shapes, style, and connectors
+
+- Rectangle, pill, ellipse/circle, diamond, and text shapes are available from tools and the `Tab` shape switcher.
+- Ellipse creates a circle by default; resize it to make an oval.
+- Pill is a capsule with straight sides and fully rounded ends.
+- Diamond defaults to a grid-friendly 3:2 ratio.
+- Select nodes or edges to use the style toolbar for shape, stroke/fill/text colors, stroke style, width, font size/alignment, and edge routing.
+- Elbow connectors render with rounded corners. Select an elbow connector and drag a horizontal or vertical segment to customize its route.
 
 ## Text, links, and images
 
@@ -126,20 +240,23 @@ Notes:
 
 ## Manual QA checklist
 
-1. Create each shape tool: text, rectangle, diamond, ellipse, pill.
-2. Create arrows and lines between shapes. Edges default to elbow routing and can be changed to straight or curved from the style toolbar. Select an elbow edge and drag a horizontal or vertical segment to adjust line positioning.
-3. Select, multi-select, marquee-select shapes and connectors.
-4. Move items with mouse and arrow keys.
-5. Resize shapes and groups.
-6. Use copy, cut, paste, duplicate, undo, redo.
-7. Group and ungroup shapes.
-8. Enter a group, move a child, and exit with Done/Escape.
-9. Rename a group label.
-10. Lock and unlock nodes.
-11. Use layer ordering commands.
-12. Align and distribute selected nodes.
-13. Drag with snap-to-grid on and off to verify guides.
-14. Paste/drop plain text, URLs, image URLs, and local image files.
-15. Replace an image and resize image to 25%, 50%, 100%.
-16. Export canvas and selection as SVG and PNG.
-17. Verify fullscreen and standard demos both behave consistently.
+1. Compile/import a sample from diagram syntax and verify diagnostics are visible in the host UI.
+2. Create each shape tool: text, rectangle, diamond, ellipse/circle, pill.
+3. Use `Tab` on selected nodes to change shape.
+4. Create arrows and lines between shapes. Edges default to elbow routing and can be changed to straight or curved from the style toolbar. Select an elbow edge and drag a horizontal or vertical segment to adjust line positioning.
+5. Select, multi-select, marquee-select shapes and connectors.
+6. Navigate selection with `Alt/Option + Arrow` across nodes/connectors.
+7. Move items with mouse and arrow keys.
+8. Resize shapes and groups.
+9. Use copy, cut, paste, duplicate, undo, redo.
+10. Group and ungroup shapes.
+11. Enter a group, move a child, and exit with Done/Escape.
+12. Rename a group label.
+13. Lock and unlock nodes.
+14. Use layer ordering commands.
+15. Align and distribute selected nodes.
+16. Drag with snap-to-grid on and off to verify guides.
+17. Paste/drop plain text, URLs, image URLs, and local image files.
+18. Replace an image and resize image to 25%, 50%, 100%.
+19. Export canvas and selection as SVG and PNG.
+20. Verify fullscreen and standard demos both behave consistently.

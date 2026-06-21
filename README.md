@@ -141,7 +141,7 @@ Grid and snapping are also optional, and existing diagrams can be fit into view 
 
 ## MVP documentation
 
-See [`docs/mvp-usage.md`](docs/mvp-usage.md) for current editing behavior, groups, layers, export, external paste/drop, host upload hooks, and a manual QA checklist.
+See [`docs/mvp-usage.md`](docs/mvp-usage.md) for current editing behavior, diagram syntax import, keyboard shortcuts, groups, layers, export, external paste/drop, host upload hooks, and a manual QA checklist.
 
 See [`docs/minucanvas-json.md`](docs/minucanvas-json.md) for the MinuCanvas JSON persistence format and JSON Canvas compatibility notes.
 
