@@ -139,7 +139,7 @@ Default canvas shortcuts:
 | `Cmd/Ctrl + 0` | Reset view |
 | `Cmd/Ctrl + Arrow` | Add a connected shape in that direction |
 
-Mind map mode can be enabled with `<MinuCanvas interactionMode="mindmap" />`. In that mode:
+Mind map mode can be enabled with `<MinuCanvas interactionMode="mindmap" />`. In that mode, add handles are limited to left/right branch directions for horizontal mind maps.
 
 | Shortcut | Action |
 | --- | --- |

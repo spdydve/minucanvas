@@ -2169,6 +2169,10 @@ ${nodeMarkup}
     if (mod && !readOnly && selection.nodeIds.length === 1) {
       const selectedNodeId = selection.nodeIds[0] ?? ''
       const direction = arrowDirection
+      if (direction && interactionMode === 'mindmap' && (direction === 'top' || direction === 'bottom')) {
+        event.preventDefault()
+        return
+      }
       if (direction) {
         const sequence = addSequenceRef.current
         const sourceNodeId = sequence?.direction === direction && sequence.lastNodeId === selectedNodeId
@@ -2571,12 +2575,15 @@ ${nodeMarkup}
             const addHandleOffset = 28 / viewport.zoom
             const resizeHandleSize = 10 / viewport.zoom
             const resizeHandleRadius = 2 / viewport.zoom
-            const addHandles: Array<{ direction: AddDirection; x: number; y: number; label: string; hintX: number; hintAnchor: 'start' | 'end' }> = [
+            const allAddHandles: Array<{ direction: AddDirection; x: number; y: number; label: string; hintX: number; hintAnchor: 'start' | 'end' }> = [
               { direction: 'top', x: node.x + node.width / 2, y: node.y - addHandleOffset, label: '⌘↑', hintX: 16, hintAnchor: 'start' },
               { direction: 'right', x: node.x + node.width + addHandleOffset, y: node.y + node.height / 2, label: '⌘→', hintX: 16, hintAnchor: 'start' },
               { direction: 'bottom', x: node.x + node.width / 2, y: node.y + node.height + addHandleOffset, label: '⌘↓', hintX: 16, hintAnchor: 'start' },
               { direction: 'left', x: node.x - addHandleOffset, y: node.y + node.height / 2, label: '⌘←', hintX: -16, hintAnchor: 'end' },
             ]
+            const addHandles = interactionMode === 'mindmap'
+              ? allAddHandles.filter((handle) => handle.direction === 'left' || handle.direction === 'right')
+              : allAddHandles
             const handles: Array<{ id: ResizeHandle; x: number; y: number }> = [
               { id: 'nw', x: node.x, y: node.y },
               { id: 'n', x: node.x + node.width / 2, y: node.y },
