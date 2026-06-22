@@ -527,6 +527,10 @@ function fitGroupsToChildren<NodeExtra extends Record<string, unknown>, EdgeExtr
   }
 }
 
+function isMindMapBranchEdge(edge: CanvasEdge): boolean {
+  return edge.fromEnd === 'none' && edge.toEnd === 'none' && edge.style?.routing === 'curved'
+}
+
 function recenterMovedNodeEdges<NodeExtra extends Record<string, unknown>, EdgeExtra extends Record<string, unknown>>(
   document: JsonCanvasDocument<NodeExtra, EdgeExtra>,
   movedNodeIds: readonly string[],
@@ -543,6 +547,19 @@ function recenterMovedNodeEdges<NodeExtra extends Record<string, unknown>, EdgeE
       const fromNode = nodes.get(edge.fromNode)
       const toNode = nodes.get(edge.toNode)
       if (!fromNode || !toNode) return edge
+
+      // Mind map branch edges intentionally preserve their left/right side.
+      // Re-running generic defaults would treat left branches as back-edges
+      // and move them to bottom-to-bottom anchors after the root is dragged.
+      if (isMindMapBranchEdge(edge) && edge.fromAnchor && edge.toAnchor) {
+        return {
+          ...edge,
+          fromSide: edge.fromAnchor.side,
+          toSide: edge.toAnchor.side,
+          fromAnchor: defaultEdgeAnchorForSide(fromNode, edge.fromAnchor.side),
+          toAnchor: defaultEdgeAnchorForSide(toNode, edge.toAnchor.side),
+        }
+      }
 
       // Re-evaluate both endpoints after a connected shape moves/resizes.
       // Preserving the old side can leave connectors visually crossing through
