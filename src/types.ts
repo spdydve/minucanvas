@@ -13,6 +13,14 @@ export interface JsonCanvasDocument<NodeExtra extends Record<string, unknown> = 
   edges: Array<CanvasEdge<EdgeExtra>>
 }
 
+/**
+ * MinuCanvas documents are JSON Canvas-compatible documents plus optional
+ * MinuCanvas editing extensions on nodes and edges.
+ */
+export type MinuCanvasDocument<NodeExtra extends Record<string, unknown> = Record<string, unknown>, EdgeExtra extends Record<string, unknown> = Record<string, unknown>> = JsonCanvasDocument<NodeExtra, EdgeExtra>
+
+export type CanvasDocumentKind = 'canvas' | 'mindmap' | (string & {})
+
 export type CanvasShape =
   | 'text'
   | 'rectangle'
@@ -65,8 +73,8 @@ export interface CanvasEdgeStyle {
 
 export interface CanvasEdgeAnchor {
   side: JsonCanvasSide
-  /** 0..1 position along the chosen side. 0.5 is the side midpoint. */
-  position: number
+  /** 0..1 position along the chosen side. Defaults to 0.5, the side midpoint. */
+  position?: number
 }
 
 export type CanvasNode<NodeExtra extends Record<string, unknown> = Record<string, unknown>> = NodeExtra & {
@@ -188,6 +196,16 @@ export interface CanvasExternalContentWarning {
 
 export type CanvasInteractionMode = 'canvas' | 'mindmap'
 
+export interface CanvasDocumentProfile<Options = unknown, NodeExtra extends Record<string, unknown> = Record<string, unknown>, EdgeExtra extends Record<string, unknown> = Record<string, unknown>> {
+  kind: CanvasDocumentKind
+  label: string
+  interactionMode?: CanvasInteractionMode
+  createDefaultDocument?: (options?: Options) => MinuCanvasDocument<NodeExtra, EdgeExtra>
+  layout?: (document: MinuCanvasDocument<NodeExtra, EdgeExtra>, options?: Options) => MinuCanvasDocument<NodeExtra, EdgeExtra>
+}
+
+export type AnyCanvasDocumentProfile = CanvasDocumentProfile<any, any, any>
+
 export interface MinuCanvasProps<NodeExtra extends Record<string, unknown> = Record<string, unknown>, EdgeExtra extends Record<string, unknown> = Record<string, unknown>> {
   value: JsonCanvasDocument<NodeExtra, EdgeExtra>
   onChange: (nextValue: JsonCanvasDocument<NodeExtra, EdgeExtra>, context: CanvasChangeContext) => void
@@ -222,6 +240,8 @@ export interface MinuCanvasProps<NodeExtra extends Record<string, unknown> = Rec
   snapToGrid?: boolean
   gridSize?: number
   shortcuts?: boolean
-  /** Keyboard behavior preset. `mindmap` uses Tab/Enter for branch creation. */
+  /** Optional profile that can supply interaction/layout conventions such as mind maps. */
+  documentProfile?: AnyCanvasDocumentProfile
+  /** Keyboard behavior preset. `mindmap` uses Tab/Enter for branch creation. Overrides `documentProfile.interactionMode`. */
   interactionMode?: CanvasInteractionMode
 }

@@ -186,7 +186,7 @@ function controlOffset(side: JsonCanvasSide | undefined, magnitude: number): Poi
 
 export function anchorForEdgeAnchor(node: CanvasNode, anchor?: CanvasEdgeAnchor): Point {
   if (!anchor) return anchorForSide(node)
-  const position = clamp(anchor.position, 0, 1)
+  const position = clamp(anchor.position ?? 0.5, 0, 1)
   const vertices = polygonVertices(node)
   if (vertices) {
     if (anchor.side === 'top') return pointOnSegment(vertices.top, vertices.right, position)

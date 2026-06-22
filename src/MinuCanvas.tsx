@@ -37,6 +37,7 @@ import {
   ungroupSelection as ungroupSelectionInDocument,
   updateNode,
 } from './model'
+import { resolveCanvasInteractionMode } from './profiles'
 import { isEditableTarget, toolFromKey } from './shortcuts'
 import type {
   CanvasAlignment,
@@ -637,10 +638,12 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
     snapToGrid = true,
     gridSize = 20,
     shortcuts = true,
-    interactionMode = 'canvas',
+    documentProfile,
+    interactionMode,
   }: MinuCanvasProps<NodeExtra, EdgeExtra>,
   ref: ForwardedRef<CanvasHandle<NodeExtra, EdgeExtra>>,
 ) {
+  const resolvedInteractionMode = interactionMode ?? resolveCanvasInteractionMode(documentProfile)
   const rootRef = useRef<HTMLDivElement>(null)
   const contextMenuRef = useRef<HTMLDivElement>(null)
   const imageReplaceInputRef = useRef<HTMLInputElement>(null)
@@ -2130,13 +2133,13 @@ ${nodeMarkup}
     }
     if (event.key === 'Tab') {
       event.preventDefault()
-      if (interactionMode === 'mindmap' && selection.nodeIds.length === 1 && createMindMapNode('child')) return
+      if (resolvedInteractionMode === 'mindmap' && selection.nodeIds.length === 1 && createMindMapNode('child')) return
       if (selection.nodeIds.length > 0 && openShapeSwitcher()) return
       cycleSelection(event.shiftKey)
       return
     }
     if ((event.key === 'Enter' || event.key === 'F2') && !readOnly) {
-      if (interactionMode === 'mindmap' && event.key === 'Enter' && !event.altKey && !event.shiftKey && selection.nodeIds.length === 1 && createMindMapNode('sibling')) {
+      if (resolvedInteractionMode === 'mindmap' && event.key === 'Enter' && !event.altKey && !event.shiftKey && selection.nodeIds.length === 1 && createMindMapNode('sibling')) {
         event.preventDefault()
         return
       }
@@ -2174,7 +2177,7 @@ ${nodeMarkup}
     if (mod && !readOnly && selection.nodeIds.length === 1) {
       const selectedNodeId = selection.nodeIds[0] ?? ''
       const direction = arrowDirection
-      if (direction && interactionMode === 'mindmap') {
+      if (direction && resolvedInteractionMode === 'mindmap') {
         event.preventDefault()
         if (direction === 'left' || direction === 'right') createMindMapNode('child', direction)
         return
@@ -2218,7 +2221,7 @@ ${nodeMarkup}
       event.preventDefault()
       setActiveTool(nextTool)
     }
-  }, [bringCurrentSelectionToFront, copyCurrentSelection, createConnectedNode, createMindMapNode, cycleSelection, deleteCurrentSelection, duplicateCurrentSelection, emitSelection, groupCurrentSelection, interactionMode, moveSelectedNodesByKeyboard, navigateSelection, nodeById, openShapeSwitcher, pasteClipboard, readOnly, redo, resetView, selection.edgeIds, selection.nodeIds, sendCurrentSelectionToBack, setActiveTool, shortcuts, undo, ungroupCurrentSelection, zoomBy])
+  }, [bringCurrentSelectionToFront, copyCurrentSelection, createConnectedNode, createMindMapNode, cycleSelection, deleteCurrentSelection, duplicateCurrentSelection, emitSelection, groupCurrentSelection, resolvedInteractionMode, moveSelectedNodesByKeyboard, navigateSelection, nodeById, openShapeSwitcher, pasteClipboard, readOnly, redo, resetView, selection.edgeIds, selection.nodeIds, sendCurrentSelectionToBack, setActiveTool, shortcuts, undo, ungroupCurrentSelection, zoomBy])
 
   const handleKeyUp = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Shift' || event.key === ' ') setPanningModifierActive(false)
@@ -2555,7 +2558,7 @@ ${nodeMarkup}
                     handleNodeTextInput(node, event.currentTarget)
                     return
                   }
-                  if (((event.metaKey || event.ctrlKey) && event.key === 'Enter') || (interactionMode === 'mindmap' && event.key === 'Enter' && !event.shiftKey)) {
+                  if (((event.metaKey || event.ctrlKey) && event.key === 'Enter') || (resolvedInteractionMode === 'mindmap' && event.key === 'Enter' && !event.shiftKey)) {
                     event.preventDefault()
                     event.currentTarget.blur()
                   }
@@ -2587,7 +2590,7 @@ ${nodeMarkup}
               { direction: 'bottom', x: node.x + node.width / 2, y: node.y + node.height + addHandleOffset, label: '⌘↓', hintX: 16, hintAnchor: 'start' },
               { direction: 'left', x: node.x - addHandleOffset, y: node.y + node.height / 2, label: '⌘←', hintX: -16, hintAnchor: 'end' },
             ]
-            const addHandles = interactionMode === 'mindmap'
+            const addHandles = resolvedInteractionMode === 'mindmap'
               ? allAddHandles.filter((handle) => handle.direction === 'left' || handle.direction === 'right')
               : allAddHandles
             const handles: Array<{ id: ResizeHandle; x: number; y: number }> = [
@@ -2610,7 +2613,7 @@ ${nodeMarkup}
                       transform={`translate(${handle.x} ${handle.y}) scale(${1 / viewport.zoom})`}
                       onPointerDown={(event) => {
                         event.stopPropagation()
-                        if (interactionMode === 'mindmap' && (handle.direction === 'left' || handle.direction === 'right')) {
+                        if (resolvedInteractionMode === 'mindmap' && (handle.direction === 'left' || handle.direction === 'right')) {
                           emitSelection({ nodeIds: [node.id], edgeIds: [] })
                           createMindMapNode('child', handle.direction)
                           return

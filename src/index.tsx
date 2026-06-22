@@ -44,6 +44,14 @@ export {
   sideForPoint,
 } from './geometry'
 export { layoutMindMap } from './mindmap'
+export {
+  applyCanvasDocumentProfileLayout,
+  builtInCanvasDocumentProfiles,
+  getCanvasDocumentProfile,
+  mindMapCanvasProfile,
+  resolveCanvasInteractionMode,
+  standardCanvasProfile,
+} from './profiles'
 export { defaultCanvasShortcuts, toolFromKey } from './shortcuts'
 export { compileMinuDiagramSyntax, compileParsedMinuDiagram, parseMinuDiagramSyntax } from './syntax'
 export type {
@@ -61,9 +69,12 @@ export type {
   SupportedMinuDiagramShape,
 } from './syntax'
 export type {
+  AnyCanvasDocumentProfile,
   CanvasAlignment,
   CanvasChangeContext,
   CanvasDistribution,
+  CanvasDocumentKind,
+  CanvasDocumentProfile,
   CanvasEdge,
   CanvasEdgeAnchor,
   CanvasEdgeRouting,
@@ -87,6 +98,7 @@ export type {
   JsonCanvasEdgeEnd,
   JsonCanvasNodeType,
   JsonCanvasSide,
+  MinuCanvasDocument,
   MinuCanvasProps,
 } from './types'
 export type { MindMapEdgeEnds, MindMapLayoutOptions, MindMapSide } from './mindmap'
