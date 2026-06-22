@@ -7,8 +7,6 @@ import type { MinuDiagramCompileOptions, MinuDiagramCompileResult, MinuDiagramCo
 
 const DEFAULT_WIDTH = 220
 const DEFAULT_HEIGHT = 112
-const TEXT_WIDTH = 200
-const TEXT_HEIGHT = 72
 const IMAGE_WIDTH = 320
 const IMAGE_HEIGHT = 200
 const DIAMOND_WIDTH = 240
@@ -69,7 +67,7 @@ export function compileParsedMinuDiagram(parsed: ParsedMinuDiagram, options: Min
   }
 
   for (const node of parsed.nodes) {
-    nodes.push(createNode(node, nodePositions.get(node.id) ?? origin, diagnostics))
+    nodes.push(createNode(node, nodePositions.get(node.id) ?? origin, diagnostics, layout === 'mindmap' ? 'text' : 'rounded-rectangle'))
   }
 
   const nodeLookup = new Map(nodes.map((node) => [node.id, node]))
@@ -84,9 +82,9 @@ export function compileParsedMinuDiagram(parsed: ParsedMinuDiagram, options: Min
   return { document, parsed, diagnostics }
 }
 
-function createNode(node: MinuDiagramNode, position: { x: number; y: number }, diagnostics: MinuDiagramDiagnostic[]): CanvasNode {
+function createNode(node: MinuDiagramNode, position: { x: number; y: number }, diagnostics: MinuDiagramDiagnostic[], defaultShape: CanvasShape): CanvasNode {
   const type = node.type ?? typeForNode(node)
-  const shape = shapeForNode(node, diagnostics)
+  const shape = shapeForNode(node, diagnostics, defaultShape)
   const { width, height } = sizeForNode(node, type, shape)
   const partial: Partial<CanvasNode> = {
     id: node.id,
@@ -116,19 +114,31 @@ function typeForNode(node: MinuDiagramNode): CanvasNode['type'] {
   return 'text'
 }
 
-function shapeForNode(node: MinuDiagramNode, diagnostics: MinuDiagramDiagnostic[]): CanvasShape {
+function shapeForNode(node: MinuDiagramNode, diagnostics: MinuDiagramDiagnostic[], defaultShape: CanvasShape): CanvasShape {
   if (node.type === 'image' || node.type === 'link') return 'text'
-  if (!node.shape) return 'rounded-rectangle'
+  if (!node.shape) return defaultShape
   const shape = SHAPE_ALIASES[node.shape]
   if (shape) return shape
   diagnostics.push({ severity: 'warning', message: `Unsupported shape "${node.shape}" for node "${node.id}". Using rounded rectangle.`, line: node.line })
   return 'rounded-rectangle'
 }
 
+function sizeForTextNote(text: string): { width: number; height: number } {
+  const lines = text.split('\n')
+  const longest = Math.max(1, ...lines.map((line) => line.length))
+  return {
+    width: Math.max(80, Math.min(360, Math.ceil(longest * 8.7 + 18))),
+    height: Math.max(36, Math.ceil(lines.length * 19 + 14)),
+  }
+}
+
 function sizeForNode(node: MinuDiagramNode, type: CanvasNode['type'], shape: CanvasShape): { width: number; height: number } {
   if (node.width && node.height) return { width: node.width, height: node.height }
   if (type === 'image') return { width: node.width ?? IMAGE_WIDTH, height: node.height ?? IMAGE_HEIGHT }
-  if (shape === 'text') return { width: node.width ?? TEXT_WIDTH, height: node.height ?? TEXT_HEIGHT }
+  if (shape === 'text') {
+    const size = sizeForTextNote(node.label ?? node.id)
+    return { width: node.width ?? size.width, height: node.height ?? size.height }
+  }
   if (shape === 'diamond') return { width: node.width ?? DIAMOND_WIDTH, height: node.height ?? DIAMOND_HEIGHT }
   if (shape === 'ellipse') return { width: node.width ?? ELLIPSE_SIZE, height: node.height ?? ELLIPSE_SIZE }
   if (shape === 'pill') return { width: node.width ?? 180, height: node.height ?? 84 }

@@ -74,7 +74,7 @@ Mind map syntax uses the same nodes and edges with a tree layout:
 ```txt
 diagram "Product plan" {
   layout mindmap
-  Product [shape: pill]
+  Product
   Product > Research
   Product > Build
   Research > Interviews
@@ -106,6 +106,8 @@ See [`minu-diagram-syntax.md`](./minu-diagram-syntax.md) for the full syntax pro
 
 ## Keyboard shortcuts
 
+Default canvas shortcuts:
+
 | Shortcut | Action |
 | --- | --- |
 | `V` / `1` | Select / move tool |
@@ -136,6 +138,18 @@ See [`minu-diagram-syntax.md`](./minu-diagram-syntax.md) for the full syntax pro
 | `Cmd/Ctrl + +` / `Cmd/Ctrl + -` | Zoom in / out |
 | `Cmd/Ctrl + 0` | Reset view |
 | `Cmd/Ctrl + Arrow` | Add a connected shape in that direction |
+
+Mind map mode can be enabled with `<MinuCanvas interactionMode="mindmap" />`. In that mode:
+
+| Shortcut | Action |
+| --- | --- |
+| `Tab` | Add child branch from the selected note |
+| `Enter` | Add sibling branch beside the selected note |
+| `F2` | Edit selected note text |
+| `Alt/Option + Enter` while editing | Insert a new line inside the note |
+| `Enter` while editing | Finish editing |
+
+Text-note nodes automatically resize to fit their text plus padding when edited. During editing, they grow visually as you type and persist the new size on blur.
 
 ## Shapes, style, and connectors
 

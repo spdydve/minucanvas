@@ -8,7 +8,7 @@ import './fullscreen.css'
 const MIND_MAP_SYNTAX = `diagram "Product plan" {
   layout mindmap
 
-  Product [shape: pill]
+  Product
 
   Product > Research
   Product > Build
@@ -61,7 +61,7 @@ function MindMapFullscreenExample() {
       <header className="fullscreen-topbar">
         <div className="fullscreen-title">
           <h1>MinuCanvas mind map</h1>
-          <span>Generated from `layout mindmap`; try curved branches, keyboard navigation, and shape editing.</span>
+          <span>Generated from `layout mindmap`; use Tab for child branches, Enter for siblings, and Alt/Option+Enter for multiline notes.</span>
         </div>
         <nav className="fullscreen-tools" aria-label="Canvas actions">
           <button onClick={() => canvasRef.current?.fitView()}>Fit</button>
@@ -96,6 +96,7 @@ function MindMapFullscreenExample() {
           snapToGrid
           autoFit
           autoFocus
+          interactionMode="mindmap"
         />
       </main>
     </div>

@@ -116,7 +116,7 @@ describe('compileMinuDiagramSyntax', () => {
   it('compiles mind map layout with curved branch edges', () => {
     const result = compileMinuDiagramSyntax(`
       layout mindmap
-      Root [shape: pill]
+      Root
       Root > Research
       Root > Build
       Research > Interviews
@@ -134,6 +134,8 @@ describe('compileMinuDiagramSyntax', () => {
     expect(research!.x).toBeGreaterThan(root!.x)
     expect(build!.x).toBeLessThan(root!.x)
     expect(interviews!.x).toBeGreaterThan(research!.x)
+    expect(root!.shape).toBe('text')
+    expect(root!.height).toBeLessThan(60)
     expect(result.document.edges.every((edge) => edge.toEnd === 'none' && edge.style?.routing === 'curved')).toBe(true)
   })
 

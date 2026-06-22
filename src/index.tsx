@@ -70,6 +70,7 @@ export type {
   CanvasEdgeStyle,
   CanvasExternalContentWarning,
   CanvasHandle,
+  CanvasInteractionMode,
   CanvasNode,
   CanvasNodeStyle,
   CanvasRenderEdgeContext,

@@ -186,6 +186,8 @@ export interface CanvasExternalContentWarning {
   file?: File
 }
 
+export type CanvasInteractionMode = 'canvas' | 'mindmap'
+
 export interface MinuCanvasProps<NodeExtra extends Record<string, unknown> = Record<string, unknown>, EdgeExtra extends Record<string, unknown> = Record<string, unknown>> {
   value: JsonCanvasDocument<NodeExtra, EdgeExtra>
   onChange: (nextValue: JsonCanvasDocument<NodeExtra, EdgeExtra>, context: CanvasChangeContext) => void
@@ -220,4 +222,6 @@ export interface MinuCanvasProps<NodeExtra extends Record<string, unknown> = Rec
   snapToGrid?: boolean
   gridSize?: number
   shortcuts?: boolean
+  /** Keyboard behavior preset. `mindmap` uses Tab/Enter for branch creation. */
+  interactionMode?: CanvasInteractionMode
 }

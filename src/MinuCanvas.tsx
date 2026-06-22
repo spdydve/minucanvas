@@ -15,6 +15,7 @@ import {
   type ReactElement,
 } from 'react'
 import { anchorForEdgeAnchor, canvasBounds, clientToCanvas, defaultEdgeAnchorForSide, defaultEdgeConnection, edgeAnchorForPoint, edgeLabelPoint, edgePath, edgeRoutePoints, moveOrthogonalRouteSegment, sideForPoint, type Point } from './geometry'
+import { layoutMindMap } from './mindmap'
 import {
   alignSelection as alignSelectionInDocument,
   bringSelectionForward,
@@ -121,6 +122,10 @@ const MIN_NODE_SIZE = 48
 const DEFAULT_DIAMOND_WIDTH = 240
 const DEFAULT_DIAMOND_HEIGHT = 160
 const DEFAULT_ELLIPSE_SIZE = 160
+const TEXT_NOTE_MIN_WIDTH = 80
+const TEXT_NOTE_MAX_WIDTH = 420
+const TEXT_NOTE_HORIZONTAL_PADDING = 18
+const TEXT_NOTE_VERTICAL_PADDING = 14
 const SHAPE_TOOLS = new Set<CanvasTool>(['text', 'rectangle', 'diamond', 'ellipse', 'pill'])
 type ResizeHandle = 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'nw'
 type AddDirection = JsonCanvasSide
@@ -248,6 +253,31 @@ function linkNodeSize(label: string): { width: number; height: number } {
     width: Math.max(72, Math.min(320, Math.ceil(label.length * 8.5 + 34))),
     height: 36,
   }
+}
+
+function textNoteSize(text: string, fontSize = 14): { width: number; height: number } {
+  const lines = text.split('\n')
+  const longest = Math.max(1, ...lines.map((line) => line.length))
+  return {
+    width: Math.max(TEXT_NOTE_MIN_WIDTH, Math.min(TEXT_NOTE_MAX_WIDTH, Math.ceil(longest * fontSize * 0.62 + TEXT_NOTE_HORIZONTAL_PADDING))),
+    height: Math.max(36, Math.ceil(lines.length * fontSize * 1.35 + TEXT_NOTE_VERTICAL_PADDING)),
+  }
+}
+
+function editableText(element: HTMLElement): string {
+  return element.innerText.replace(/\n$/, '')
+}
+
+function insertEditableLineBreak(element: HTMLElement) {
+  const doc = element.ownerDocument
+  const selection = doc.defaultView?.getSelection()
+  if (!selection || selection.rangeCount === 0) return
+  const range = selection.getRangeAt(0)
+  range.deleteContents()
+  range.insertNode(doc.createTextNode('\n'))
+  range.collapse(false)
+  selection.removeAllRanges()
+  selection.addRange(range)
 }
 
 function fileToDataUrl(file: File): Promise<string> {
@@ -590,6 +620,7 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
     snapToGrid = true,
     gridSize = 20,
     shortcuts = true,
+    interactionMode = 'canvas',
   }: MinuCanvasProps<NodeExtra, EdgeExtra>,
   ref: ForwardedRef<CanvasHandle<NodeExtra, EdgeExtra>>,
 ) {
@@ -823,6 +854,43 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
     },
     [emitChange, emitSelection, nodeById, readOnly, value],
   )
+
+  const createMindMapNode = useCallback((kind: 'child' | 'sibling') => {
+    if (readOnly || selection.nodeIds.length !== 1) return false
+    const selectedNodeId = selection.nodeIds[0] ?? ''
+    const selectedNode = nodeById.get(selectedNodeId)
+    if (!selectedNode || selectedNode.type === 'group' || selectedNode.type === 'image' || selectedNode.type === 'link') return false
+    const incoming = value.edges.find((edge) => edge.toNode === selectedNode.id)
+    const parentId = kind === 'sibling' && incoming ? incoming.fromNode : selectedNode.id
+    const parentNode = nodeById.get(parentId)
+    if (!parentNode) return false
+
+    const label = 'New idea'
+    const size = textNoteSize(label, selectedNode.style?.fontSize ?? 14)
+    const newNode = createCanvasNode<NodeExtra>({
+      id: createId('idea'),
+      type: 'text',
+      text: label,
+      shape: 'text',
+      groupId: selectedNode.groupId,
+      x: parentNode.x + parentNode.width + 160,
+      y: parentNode.y,
+      width: size.width,
+      height: size.height,
+    } as Partial<CanvasNode<NodeExtra>>)
+    const edge = createCanvasEdge<EdgeExtra>(parentId, newNode.id, {
+      id: createId('branch'),
+      fromEnd: 'none',
+      toEnd: 'none',
+      style: { routing: 'curved' },
+    } as Partial<CanvasEdge<EdgeExtra>>)
+    const next = layoutMindMap({ ...value, nodes: [...value.nodes, newNode], edges: [...value.edges, edge] })
+    emitChange(next, 'create-node')
+    emitSelection({ nodeIds: [newNode.id], edgeIds: [] })
+    setEditingNodeId(newNode.id)
+    requestAnimationFrame(() => rootRef.current?.focus())
+    return true
+  }, [emitChange, emitSelection, nodeById, readOnly, selection.nodeIds, value])
 
   const selectionPoint = useCallback((): Point | null => {
     const selectedNode = selection.nodeIds.length === 1 ? nodeById.get(selection.nodeIds[0] ?? '') : null
@@ -2040,11 +2108,16 @@ ${nodeMarkup}
     }
     if (event.key === 'Tab') {
       event.preventDefault()
+      if (interactionMode === 'mindmap' && selection.nodeIds.length === 1 && createMindMapNode('child')) return
       if (selection.nodeIds.length > 0 && openShapeSwitcher()) return
       cycleSelection(event.shiftKey)
       return
     }
     if ((event.key === 'Enter' || event.key === 'F2') && !readOnly) {
+      if (interactionMode === 'mindmap' && event.key === 'Enter' && !event.altKey && !event.shiftKey && selection.nodeIds.length === 1 && createMindMapNode('sibling')) {
+        event.preventDefault()
+        return
+      }
       if (selection.nodeIds.length === 1) {
         event.preventDefault()
         setEditingNodeId(selection.nodeIds[0] ?? null)
@@ -2118,7 +2191,7 @@ ${nodeMarkup}
       event.preventDefault()
       setActiveTool(nextTool)
     }
-  }, [bringCurrentSelectionToFront, copyCurrentSelection, createConnectedNode, cycleSelection, deleteCurrentSelection, duplicateCurrentSelection, emitSelection, groupCurrentSelection, moveSelectedNodesByKeyboard, navigateSelection, nodeById, openShapeSwitcher, pasteClipboard, readOnly, redo, resetView, selection.edgeIds, selection.nodeIds, sendCurrentSelectionToBack, setActiveTool, shortcuts, undo, ungroupCurrentSelection, zoomBy])
+  }, [bringCurrentSelectionToFront, copyCurrentSelection, createConnectedNode, createMindMapNode, cycleSelection, deleteCurrentSelection, duplicateCurrentSelection, emitSelection, groupCurrentSelection, interactionMode, moveSelectedNodesByKeyboard, navigateSelection, nodeById, openShapeSwitcher, pasteClipboard, readOnly, redo, resetView, selection.edgeIds, selection.nodeIds, sendCurrentSelectionToBack, setActiveTool, shortcuts, undo, ungroupCurrentSelection, zoomBy])
 
   const handleKeyUp = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Shift' || event.key === ' ') setPanningModifierActive(false)
@@ -2146,14 +2219,29 @@ ${nodeMarkup}
     })
   }, [activeGroupId, emitSelection, nodeById, selection.edgeIds, selection.nodeIds])
 
+  const handleNodeTextInput = useCallback((node: CanvasNode<NodeExtra>, element: HTMLElement) => {
+    if (node.type !== 'text' || node.shape !== 'text') return
+    const size = textNoteSize(editableText(element), node.style?.fontSize ?? 14)
+    const nodeElement = element.closest<HTMLElement>('[data-minucanvas-node-id]')
+    if (!nodeElement) return
+    nodeElement.style.width = `${size.width}px`
+    nodeElement.style.height = `${size.height}px`
+  }, [])
+
   const handleNodeTextBlur = useCallback((node: CanvasNode<NodeExtra>, text: string) => {
     setEditingNodeId(null)
-    if (readOnly || text === nodeLabel(node)) return
+    if (readOnly) return
+    const size = node.type === 'text' && node.shape === 'text' ? textNoteSize(text, node.style?.fontSize ?? 14) : null
+    if (text === nodeLabel(node) && (!size || (size.width === node.width && size.height === node.height))) return
     emitChange(
       updateNode(value, node.id, (current) => {
         const next = { ...current }
         if (current.type === 'text') next.text = text
         if (current.type === 'group') next.label = text
+        if (size && current.type === 'text' && current.shape === 'text') {
+          next.width = size.width
+          next.height = size.height
+        }
         return next
       }),
       'update-node',
@@ -2432,13 +2520,21 @@ ${nodeMarkup}
                     event.preventDefault()
                     setEditingNodeId(null)
                     rootRef.current?.focus()
+                    return
                   }
-                  if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+                  if (event.altKey && event.key === 'Enter') {
+                    event.preventDefault()
+                    insertEditableLineBreak(event.currentTarget)
+                    handleNodeTextInput(node, event.currentTarget)
+                    return
+                  }
+                  if (((event.metaKey || event.ctrlKey) && event.key === 'Enter') || (interactionMode === 'mindmap' && event.key === 'Enter' && !event.shiftKey)) {
                     event.preventDefault()
                     event.currentTarget.blur()
                   }
                 }}
-                onBlur={(event) => handleNodeTextBlur(node, event.currentTarget.textContent ?? '')}
+                onInput={(event) => handleNodeTextInput(node, event.currentTarget)}
+                onBlur={(event) => handleNodeTextBlur(node, editableText(event.currentTarget))}
               >
                 {editing ? <DefaultNodeContent node={node} editing={editing} /> : renderNode?.({ node, selected, editing }) ?? <DefaultNodeContent node={node} editing={editing} />}
               </div>

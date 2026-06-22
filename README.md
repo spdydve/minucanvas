@@ -146,7 +146,7 @@ See [`docs/mvp-usage.md`](docs/mvp-usage.md) for current editing behavior, diagr
 
 See [`docs/minucanvas-json.md`](docs/minucanvas-json.md) for the MinuCanvas JSON persistence format and JSON Canvas compatibility notes.
 
-See [`docs/minu-diagram-syntax.md`](docs/minu-diagram-syntax.md) for the proposed LLM-friendly diagram-as-code syntax, including `layout mindmap`. Parser/compiler helpers are available from `@dpklabs/minucanvas/syntax`, and `layoutMindMap(document, options)` is exported from the root package.
+See [`docs/minu-diagram-syntax.md`](docs/minu-diagram-syntax.md) for the proposed LLM-friendly diagram-as-code syntax, including `layout mindmap`. Parser/compiler helpers are available from `@dpklabs/minucanvas/syntax`, and `layoutMindMap(document, options)` is exported from the root package. For keyboard-first mind map editing, use `<MinuCanvas interactionMode="mindmap" />`.
 
 ## Releases
 

@@ -165,7 +165,7 @@ Flow layout is the default. Use `layout mindmap` for a tree-style mind map arran
 ```txt
 diagram "Product plan" {
   layout mindmap
-  Product [shape: pill]
+  Product
 
   Product > Research
   Product > Build
@@ -177,7 +177,7 @@ diagram "Product plan" {
 }
 ```
 
-Mind map layout uses normal MinuCanvas nodes and edges, but arranges them around the root. The root is selected from the first node with no incoming edge, or the first node if every node has an incoming edge. Root children split left/right by default, descendants continue outward, and branch edges default to curved lines with no arrowheads.
+Mind map layout uses normal MinuCanvas nodes and edges, but arranges them around the root. Nodes default to text-note shapes, grow from their text content, and can still opt into explicit shapes such as `shape: pill`. The root is selected from the first node with no incoming edge, or the first node if every node has an incoming edge. Root children split left/right by default, descendants continue outward, and branch edges default to curved lines with no arrowheads.
 
 The compiler also accepts mind map options:
 
