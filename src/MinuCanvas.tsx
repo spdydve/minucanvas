@@ -872,7 +872,7 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
     [emitChange, emitSelection, nodeById, readOnly, value],
   )
 
-  const createMindMapNode = useCallback((kind: 'child' | 'sibling') => {
+  const createMindMapNode = useCallback((kind: 'child' | 'sibling', side?: 'left' | 'right') => {
     if (readOnly || selection.nodeIds.length !== 1) return false
     const selectedNodeId = selection.nodeIds[0] ?? ''
     const selectedNode = nodeById.get(selectedNodeId)
@@ -882,6 +882,11 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
     const parentNode = nodeById.get(parentId)
     if (!parentNode) return false
 
+    const parentCenter = { x: parentNode.x + parentNode.width / 2, y: parentNode.y + parentNode.height / 2 }
+    const selectedCenter = { x: selectedNode.x + selectedNode.width / 2, y: selectedNode.y + selectedNode.height / 2 }
+    const branchReferenceNode = kind === 'child' && incoming ? nodeById.get(incoming.fromNode) : parentNode
+    const branchReferenceCenter = branchReferenceNode ? { x: branchReferenceNode.x + branchReferenceNode.width / 2, y: branchReferenceNode.y + branchReferenceNode.height / 2 } : parentCenter
+    const branchSide = side ?? (selectedCenter.x < branchReferenceCenter.x ? 'left' : 'right')
     const label = 'New idea'
     const size = textNoteSize(label, selectedNode.style?.fontSize ?? 14)
     const newNode = createCanvasNode<NodeExtra>({
@@ -890,8 +895,8 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
       text: label,
       shape: 'text',
       groupId: selectedNode.groupId,
-      x: parentNode.x + parentNode.width + 160,
-      y: parentNode.y,
+      x: branchSide === 'left' ? parentNode.x - 160 - size.width : parentNode.x + parentNode.width + 160,
+      y: parentCenter.y - size.height / 2,
       width: size.width,
       height: size.height,
     } as Partial<CanvasNode<NodeExtra>>)
@@ -2169,8 +2174,9 @@ ${nodeMarkup}
     if (mod && !readOnly && selection.nodeIds.length === 1) {
       const selectedNodeId = selection.nodeIds[0] ?? ''
       const direction = arrowDirection
-      if (direction && interactionMode === 'mindmap' && (direction === 'top' || direction === 'bottom')) {
+      if (direction && interactionMode === 'mindmap') {
         event.preventDefault()
+        if (direction === 'left' || direction === 'right') createMindMapNode('child', direction)
         return
       }
       if (direction) {
@@ -2604,6 +2610,11 @@ ${nodeMarkup}
                       transform={`translate(${handle.x} ${handle.y}) scale(${1 / viewport.zoom})`}
                       onPointerDown={(event) => {
                         event.stopPropagation()
+                        if (interactionMode === 'mindmap' && (handle.direction === 'left' || handle.direction === 'right')) {
+                          emitSelection({ nodeIds: [node.id], edgeIds: [] })
+                          createMindMapNode('child', handle.direction)
+                          return
+                        }
                         createConnectedNode(node, handle.direction)
                       }}
                     >

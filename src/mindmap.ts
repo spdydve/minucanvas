@@ -50,12 +50,23 @@ function buildChildren(edges: CanvasEdge[], nodeIds: Set<string>): Map<string, s
   return children
 }
 
-function splitChildren(childIds: string[], splitRootChildren: boolean): { left: string[]; right: string[] } {
+function splitChildren(childIds: string[], splitRootChildren: boolean, nodesById: Map<string, CanvasNode>, rootNode: CanvasNode, rootCenter: { x: number; y: number }): { left: string[]; right: string[] } {
   if (!splitRootChildren) return { left: [], right: childIds }
   const right: string[] = []
   const left: string[] = []
-  childIds.forEach((childId, index) => {
-    if (index % 2 === 0) right.push(childId)
+  const unplaced: string[] = []
+  for (const childId of childIds) {
+    const child = nodesById.get(childId)
+    if (!child) continue
+    const center = nodeCenter(child)
+    if (Math.abs(child.x - rootNode.x) <= 1) unplaced.push(childId)
+    else if (center.x < rootCenter.x - 1) left.push(childId)
+    else if (center.x > rootCenter.x + 1) right.push(childId)
+    else unplaced.push(childId)
+  }
+  const startRight = right.length <= left.length
+  unplaced.forEach((childId, index) => {
+    if ((index % 2 === 0) === startRight) right.push(childId)
     else left.push(childId)
   })
   return { left, right }
@@ -115,7 +126,7 @@ export function layoutMindMap<NodeExtra extends Record<string, unknown> = Record
   }
 
   const rootChildren = children.get(root.id) ?? []
-  const split = splitChildren(rootChildren, options.splitRootChildren ?? true)
+  const split = splitChildren(rootChildren, options.splitRootChildren ?? true, nodesById, root, placements.get(root.id)!.center)
   placeChildren(root.id, placements.get(root.id)!.center, 'right', split.right)
   placeChildren(root.id, placements.get(root.id)!.center, 'left', split.left)
 
