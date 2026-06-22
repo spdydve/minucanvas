@@ -13,7 +13,8 @@ const THEME_URLS: Record<Exclude<ThemeChoice, 'base'>, string> = {
   dark: darkThemeUrl,
 }
 
-const SAMPLE_DIAGRAM_SYNTAX = `diagram "Auth flow" {
+const FLOW_DIAGRAM_SYNTAX = `diagram "Auth flow" {
+  layout flow
   direction right
 
   User [shape: pill]
@@ -27,6 +28,29 @@ const SAMPLE_DIAGRAM_SYNTAX = `diagram "Auth flow" {
   Valid > Dashboard: yes
   Valid > Error: no [style: dashed]
   Error > Login
+}`
+
+const MIND_MAP_SYNTAX = `diagram "Product plan" {
+  layout mindmap
+
+  Product [shape: pill]
+
+  Product > Research
+  Product > Build
+  Product > Launch
+  Product > Docs
+
+  Research > Interviews
+  Research > Competitors
+  Research > Trends
+
+  Build > Prototype
+  Build > MVP
+  Build > Beta
+
+  Launch > Website
+  Launch > Announcement
+  Launch > Feedback
 }`
 
 const INITIAL_CANVAS: JsonCanvasDocument = {
@@ -120,7 +144,7 @@ export default function App() {
   const [snapToGrid, setSnapToGrid] = useState(true)
   const [tool, setTool] = useState<CanvasTool>('select')
   const [selected, setSelected] = useState({ nodeIds: [] as string[], edgeIds: [] as string[] })
-  const [diagramSource, setDiagramSource] = useState(SAMPLE_DIAGRAM_SYNTAX)
+  const [diagramSource, setDiagramSource] = useState(FLOW_DIAGRAM_SYNTAX)
   const [diagramDiagnostics, setDiagramDiagnostics] = useState<string[]>([])
 
   const activeThemeUrl = theme === 'base' ? null : THEME_URLS[theme]
@@ -130,8 +154,8 @@ export default function App() {
     return URL.createObjectURL(file)
   }
 
-  function handleImportDiagramSyntax() {
-    const result = compileMinuDiagramSyntax(diagramSource)
+  function handleImportDiagramSyntax(layout?: 'flow' | 'mindmap') {
+    const result = compileMinuDiagramSyntax(diagramSource, layout ? { layout } : undefined)
     setDocument(result.document)
     setSelected({ nodeIds: [], edgeIds: [] })
     setDiagramDiagnostics(result.diagnostics.map((diagnostic) => `${diagnostic.severity}: ${diagnostic.message}${diagnostic.line ? ` (line ${diagnostic.line})` : ''}`))
@@ -228,8 +252,11 @@ export default function App() {
               spellCheck={false}
             />
             <div className="diagram-source__actions">
-              <button onClick={handleImportDiagramSyntax}>Import syntax</button>
-              <button onClick={() => setDiagramSource(SAMPLE_DIAGRAM_SYNTAX)}>Reset sample</button>
+              <button onClick={() => handleImportDiagramSyntax()}>Import syntax</button>
+              <button onClick={() => handleImportDiagramSyntax('flow')}>Import as flow</button>
+              <button onClick={() => handleImportDiagramSyntax('mindmap')}>Import as mind map</button>
+              <button onClick={() => setDiagramSource(FLOW_DIAGRAM_SYNTAX)}>Flow sample</button>
+              <button onClick={() => setDiagramSource(MIND_MAP_SYNTAX)}>Mind map sample</button>
             </div>
             {diagramDiagnostics.length > 0 ? (
               <ul className="diagram-diagnostics">
