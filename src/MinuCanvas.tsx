@@ -2617,8 +2617,10 @@ ${nodeMarkup}
               : <line key={`guide-${index}`} className="minucanvas-alignment-guide" x1={guide.from - 24 / viewport.zoom} y1={guide.value} x2={guide.to + 24 / viewport.zoom} y2={guide.value} />
           ))}
           {value.nodes.map((node) => {
-            if (!selection.nodeIds.includes(node.id) || readOnly || node.locked) return null
+            const editing = editingNodeId === node.id
+            if (!selection.nodeIds.includes(node.id) || readOnly || node.locked || editing) return null
             const showAddHandles = node.type !== 'group'
+            const showResizeHandles = resolvedInteractionMode !== 'mindmap'
             const addHandleOffset = 28 / viewport.zoom
             const resizeHandleSize = 10 / viewport.zoom
             const resizeHandleRadius = 2 / viewport.zoom
@@ -2665,36 +2667,36 @@ ${nodeMarkup}
                     </g>
                   ))}
                 </g> : null}
-                <g className="minucanvas-resize-handles">
-                {handles.map((handle) => (
-                  <rect
-                    key={handle.id}
-                    className={`minucanvas-resize-handle minucanvas-resize-handle--${handle.id}`}
-                    x={handle.x - resizeHandleSize / 2}
-                    y={handle.y - resizeHandleSize / 2}
-                    width={resizeHandleSize}
-                    height={resizeHandleSize}
-                    rx={resizeHandleRadius}
-                    onPointerDown={(event) => {
-                      event.stopPropagation()
-                      event.currentTarget.setPointerCapture(event.pointerId)
-                      emitSelection({ nodeIds: [node.id], edgeIds: [] })
-                      undoTransactionRef.current = cloneCanvas(value)
-                      undoTransactionPushedRef.current = false
-                      dragRef.current = {
-                        kind: 'resize-node',
-                        nodeId: node.id,
-                        handle: handle.id,
-                        startPoint: pointFromEvent(event),
-                        original: node,
-                        childOriginals: node.type === 'group'
-                          ? new Map(value.nodes.filter((child) => child.groupId === node.id).map((child) => [child.id, child]))
-                          : new Map(),
-                      }
-                    }}
-                  />
-                ))}
-                </g>
+                {showResizeHandles ? <g className="minucanvas-resize-handles">
+                  {handles.map((handle) => (
+                    <rect
+                      key={handle.id}
+                      className={`minucanvas-resize-handle minucanvas-resize-handle--${handle.id}`}
+                      x={handle.x - resizeHandleSize / 2}
+                      y={handle.y - resizeHandleSize / 2}
+                      width={resizeHandleSize}
+                      height={resizeHandleSize}
+                      rx={resizeHandleRadius}
+                      onPointerDown={(event) => {
+                        event.stopPropagation()
+                        event.currentTarget.setPointerCapture(event.pointerId)
+                        emitSelection({ nodeIds: [node.id], edgeIds: [] })
+                        undoTransactionRef.current = cloneCanvas(value)
+                        undoTransactionPushedRef.current = false
+                        dragRef.current = {
+                          kind: 'resize-node',
+                          nodeId: node.id,
+                          handle: handle.id,
+                          startPoint: pointFromEvent(event),
+                          original: node,
+                          childOriginals: node.type === 'group'
+                            ? new Map(value.nodes.filter((child) => child.groupId === node.id).map((child) => [child.id, child]))
+                            : new Map(),
+                        }
+                      }}
+                    />
+                  ))}
+                </g> : null}
               </g>
             )
           })}

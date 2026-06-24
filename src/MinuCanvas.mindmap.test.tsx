@@ -42,6 +42,31 @@ function renderMindMapHarness(initialDocument: JsonCanvasDocument, initialSelect
 }
 
 describe('MinuCanvas mind map editing', () => {
+  it('shows add handles for selected nodes but hides resize handles in mind map mode', () => {
+    const initialDocument: JsonCanvasDocument = {
+      nodes: [createCanvasNode({ id: 'Root', text: 'Root', shape: 'text' })],
+      edges: [],
+    }
+    const view = renderMindMapHarness(initialDocument, { nodeIds: ['Root'], edgeIds: [] })
+
+    expect(view.container.querySelectorAll('.minucanvas-add-handle')).toHaveLength(2)
+    expect(view.container.querySelector('.minucanvas-resize-handle')).toBeNull()
+  })
+
+  it('hides add handles while editing a mind map node', async () => {
+    const initialDocument: JsonCanvasDocument = {
+      nodes: [createCanvasNode({ id: 'Root', text: 'Root', shape: 'text' })],
+      edges: [],
+    }
+    const view = renderMindMapHarness(initialDocument, { nodeIds: ['Root'], edgeIds: [] })
+    const canvas = view.container.querySelector<HTMLElement>('.minucanvas')!
+
+    fireEvent.keyDown(canvas, { key: 'Enter' })
+
+    await waitFor(() => expect(view.container.querySelector('[contenteditable="true"]')).toBeTruthy())
+    expect(view.container.querySelector('.minucanvas-add-handle')).toBeNull()
+  })
+
   it('keeps Tab inside the canvas and repeatedly creates editable child branches', async () => {
     const initialDocument: JsonCanvasDocument = {
       nodes: [createCanvasNode({ id: 'Root', text: 'Root', shape: 'text' })],
