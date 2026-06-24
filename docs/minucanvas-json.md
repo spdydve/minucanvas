@@ -6,7 +6,7 @@ The goal is to keep the simple `nodes` + `edges` foundation while preserving ric
 
 ## Document
 
-Current documents are stored as:
+Current documents are stored as JSON Canvas-compatible `nodes` and `edges`:
 
 ```ts
 type JsonCanvasDocument = {
@@ -15,18 +15,13 @@ type JsonCanvasDocument = {
 }
 ```
 
-Future documents may add an explicit format/version wrapper:
+The public `MinuCanvasDocument` type is currently an alias for this shape:
 
 ```ts
-type MinuCanvasDocument = {
-  format: 'minucanvas'
-  version: 1
-  nodes: CanvasNode[]
-  edges: CanvasEdge[]
-}
+type MinuCanvasDocument = JsonCanvasDocument
 ```
 
-For now, `nodes` and `edges` remain top-level for JSON Canvas compatibility.
+The name clarifies intent: a MinuCanvas document is JSON Canvas at the core plus optional MinuCanvas editing extensions on nodes and edges. For now, `nodes` and `edges` remain top-level for JSON Canvas compatibility. Host apps can wrap the document with their own file metadata, kind/profile, viewport, or version fields.
 
 ## Node
 
@@ -71,7 +66,7 @@ type CanvasNode = {
 | `text` | Text or shape node. The visual shape is controlled by `shape`. |
 | `link` | External/internal URL node. Uses `url`. |
 | `file` | Generic file attachment node. Reserved for future broader file support. |
-| `image` | Image node. Uses `file` or `url` as source. |
+| `image` | Image node. Uses `file` or `url` as source. Current editor convenience type; a slimmer future spec could normalize images to `file` plus media metadata. |
 | `group` | Group/container node. Child nodes reference it via `groupId`. |
 
 ### Shapes
@@ -188,11 +183,11 @@ type CanvasEdge = {
 ```ts
 type CanvasEdgeAnchor = {
   side: 'top' | 'right' | 'bottom' | 'left'
-  position: number // 0..1 along the side
+  position?: number // 0..1 along the side; defaults to 0.5
 }
 ```
 
-`fromSide` and `toSide` are retained for compatibility. `fromAnchor` and `toAnchor` provide more precise attachment points.
+`fromSide` and `toSide` are retained for compatibility and simple consumers. `fromAnchor` and `toAnchor` are the richer MinuCanvas fields; when `position` is omitted, consumers should attach at the midpoint of the side.
 
 ### Edge style
 
@@ -205,6 +200,44 @@ type CanvasEdgeStyle = {
   opacity?: number
 }
 ```
+
+## Document profiles
+
+Profiles describe editor behavior/layout around the base document without replacing the node/edge schema.
+
+Built-in profiles:
+
+```ts
+import {
+  standardCanvasProfile,
+  mindMapCanvasProfile,
+  applyCanvasDocumentProfileLayout,
+} from '@dpklabs/minucanvas'
+```
+
+A host app can store a wrapper like:
+
+```ts
+type CanvasFile = {
+  id: string
+  title: string
+  kind: 'canvas' | 'mindmap' | string
+  document: MinuCanvasDocument
+  profileOptions?: Record<string, unknown>
+}
+```
+
+Then render with:
+
+```tsx
+<MinuCanvas
+  value={file.document}
+  onChange={setDocument}
+  documentProfile={file.kind === 'mindmap' ? mindMapCanvasProfile : standardCanvasProfile}
+/>
+```
+
+For mind maps, the profile supplies `interactionMode: 'mindmap'`; `applyCanvasDocumentProfileLayout(document, mindMapCanvasProfile, options)` applies the same layout utility behind the profile.
 
 ## Persistence guidance
 

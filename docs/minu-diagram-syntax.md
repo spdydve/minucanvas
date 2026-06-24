@@ -193,7 +193,7 @@ const { document } = compileMinuDiagramSyntax(source, {
 })
 ```
 
-For non-syntax use, host apps can call `layoutMindMap(document, options)` from the root package and then pass the returned document to `<MinuCanvas />`.
+For non-syntax use, host apps can call `layoutMindMap(document, options)` from the root package and then pass the returned document to `<MinuCanvas />`. Prefer `documentProfile={mindMapCanvasProfile}` when rendering mind maps so keyboard behavior, branch creation, and note editing use the mind map profile.
 
 ### Styling
 
@@ -287,11 +287,12 @@ The syntax compiler is owned by the MinuCanvas package but kept separate from th
 
 ```ts
 import { compileMinuDiagramSyntax, parseMinuDiagramSyntax } from '@dpklabs/minucanvas/syntax'
-import { layoutMindMap } from '@dpklabs/minucanvas'
+import { applyCanvasDocumentProfileLayout, layoutMindMap, mindMapCanvasProfile } from '@dpklabs/minucanvas'
 
 const parsed = parseMinuDiagramSyntax(source)
 const { document, diagnostics } = compileMinuDiagramSyntax(source)
 const mindMapDocument = layoutMindMap(document, { rootId: 'Product' })
+const profileMindMapDocument = applyCanvasDocumentProfileLayout(document, mindMapCanvasProfile, { rootId: 'Product' })
 ```
 
 The root package also re-exports these helpers for convenience.

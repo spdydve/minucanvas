@@ -1,6 +1,6 @@
 import { StrictMode, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { CanvasStyleToolbar, CanvasToolbar, MinuCanvas, compileMinuDiagramSyntax } from '../src/index'
+import { CanvasStyleToolbar, CanvasToolbar, MinuCanvas, compileMinuDiagramSyntax, mindMapCanvasProfile } from '../src/index'
 import type { CanvasHandle, CanvasTool, JsonCanvasDocument } from '../src/index'
 import '../src/theme/theme.css'
 import './fullscreen.css'
@@ -61,7 +61,7 @@ function MindMapFullscreenExample() {
       <header className="fullscreen-topbar">
         <div className="fullscreen-title">
           <h1>MinuCanvas mind map</h1>
-          <span>Generated from `layout mindmap`; use Tab for child branches, Enter for siblings, and Alt/Option+Enter for multiline notes.</span>
+          <span>Generated from `layout mindmap`; use arrows to navigate, Enter to edit, Tab for child branches, and Alt/Option+Enter for multiline notes.</span>
         </div>
         <nav className="fullscreen-tools" aria-label="Canvas actions">
           <button onClick={() => canvasRef.current?.fitView()}>Fit</button>
@@ -96,7 +96,7 @@ function MindMapFullscreenExample() {
           snapToGrid
           autoFit
           autoFocus
-          interactionMode="mindmap"
+          documentProfile={mindMapCanvasProfile}
         />
       </main>
     </div>

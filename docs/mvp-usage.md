@@ -90,6 +90,28 @@ import { layoutMindMap } from '@dpklabs/minucanvas'
 setValue(layoutMindMap(value, { rootId: 'Product' }))
 ```
 
+For profile-backed usage, use the built-in mind map profile:
+
+```tsx
+import {
+  MinuCanvas,
+  applyCanvasDocumentProfileLayout,
+  mindMapCanvasProfile,
+} from '@dpklabs/minucanvas'
+
+const mindMapDocument = applyCanvasDocumentProfileLayout(value, mindMapCanvasProfile, {
+  rootId: 'Product',
+})
+
+<MinuCanvas
+  value={mindMapDocument}
+  onChange={setValue}
+  documentProfile={mindMapCanvasProfile}
+/>
+```
+
+`documentProfile={mindMapCanvasProfile}` enables the mind map interaction mode. Explicit `interactionMode="mindmap"` is still supported as an override for hosts that do not want to use profiles yet.
+
 See [`minu-diagram-syntax.md`](./minu-diagram-syntax.md) for the full syntax proposal and API details.
 
 ## Core editing
@@ -139,17 +161,19 @@ Default canvas shortcuts:
 | `Cmd/Ctrl + 0` | Reset view |
 | `Cmd/Ctrl + Arrow` | Add a connected shape in that direction |
 
-Mind map mode can be enabled with `<MinuCanvas interactionMode="mindmap" />`. In that mode, add handles are limited to left/right branch directions for horizontal mind maps.
+Mind map mode can be enabled with `documentProfile={mindMapCanvasProfile}` or directly with `<MinuCanvas interactionMode="mindmap" />`. In that mode, add handles are limited to left/right branch directions for horizontal mind maps, and resize handles are hidden to keep notes content-sized.
 
 | Shortcut | Action |
 | --- | --- |
-| `Tab` | Add child branch from the selected note |
-| `Enter` | Add sibling branch beside the selected note |
-| `F2` | Edit selected note text |
+| Arrow keys | Navigate spatially between mind map notes |
+| `Tab` on selected note | Add child branch and start editing it |
+| `Enter` on selected note | Edit selected note text |
+| `F2` on selected note | Edit selected note text |
+| `Tab` while editing | Commit current text, add child branch, and start editing it |
+| `Enter` while editing | Commit current text, add sibling branch, and start editing it |
 | `Alt/Option + Enter` while editing | Insert a new line inside the note |
-| `Enter` while editing | Finish editing |
 
-Text-note nodes automatically resize to fit their text plus padding when edited. During editing, they grow visually as you type and persist the new size on blur.
+Text-note nodes automatically resize to fit their text plus padding when edited. During editing, they grow visually as you type and persist the new size on blur. Editing mode hides add/resize overlays so handles do not lag behind the growing text box.
 
 ## Shapes, style, and connectors
 

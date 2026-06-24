@@ -10,7 +10,7 @@ Reusable React canvas editor for JSON Canvas documents, with an MVP flowchart to
 - Separate canvas/surface themes and shape themes via CSS variables.
 - Base shape theme is a simple outline, including the dark mode style.
 - MVP diagram tools: select, pan, text, rectangle, diamond, ellipse, pill, arrow, line.
-- Optional diagram syntax compiler and mind map layout utility for generated diagrams.
+- Optional diagram syntax compiler, document profiles, and mind map layout utility for generated diagrams.
 
 ## Install
 
@@ -76,6 +76,7 @@ Dev pages:
 
 - Standard demo: `http://localhost:3334/`
 - Fullscreen demo: `http://localhost:3334/fullscreen.html`
+- Mind map fullscreen demo: `http://localhost:3334/mindmap.html`
 
 ## Arrows, lines, and connectors
 
@@ -90,7 +91,7 @@ Arrow and line tools are separate drawing tools, but both can function as connec
 }
 ```
 
-`position` is `0..1` along the selected side. When dragging near the middle of a side, the anchor snaps to `0.5`; otherwise it keeps the chosen edge position so multiple arrows/lines can attach to the same shape without crowding one midpoint.
+`position` is `0..1` along the selected side and defaults to `0.5` when omitted. When dragging near the middle of a side, the anchor snaps to `0.5`; otherwise it keeps the chosen edge position so multiple arrows/lines can attach to the same shape without crowding one midpoint.
 
 With the arrow or line tool active, start drags from a shape outline/edge rather than the middle of the shape. Arrow creates an arrowhead; line creates a plain line. You can also start slightly outside the edge; the hit target resolves to the nearest outline point. Arrows/lines have an expanded invisible hit area, so selection and double-click label editing do not require pixel-perfect clicks. Select an arrow/line to reveal draggable start/end handles. Drag either handle to another point on a shape outline to reroute it. Double-click an arrow/line or its label to add/edit text.
 
@@ -146,7 +147,17 @@ See [`docs/mvp-usage.md`](docs/mvp-usage.md) for current editing behavior, diagr
 
 See [`docs/minucanvas-json.md`](docs/minucanvas-json.md) for the MinuCanvas JSON persistence format and JSON Canvas compatibility notes.
 
-See [`docs/minu-diagram-syntax.md`](docs/minu-diagram-syntax.md) for the proposed LLM-friendly diagram-as-code syntax, including `layout mindmap`. Parser/compiler helpers are available from `@dpklabs/minucanvas/syntax`, and `layoutMindMap(document, options)` is exported from the root package. For keyboard-first mind map editing, use `<MinuCanvas interactionMode="mindmap" />`.
+See [`docs/minu-diagram-syntax.md`](docs/minu-diagram-syntax.md) for the proposed LLM-friendly diagram-as-code syntax, including `layout mindmap`. Parser/compiler helpers are available from `@dpklabs/minucanvas/syntax`, and `layoutMindMap(document, options)` is exported from the root package.
+
+For keyboard-first mind map editing, prefer the built-in profile:
+
+```tsx
+import { MinuCanvas, mindMapCanvasProfile } from '@dpklabs/minucanvas'
+
+<MinuCanvas documentProfile={mindMapCanvasProfile} value={value} onChange={setValue} />
+```
+
+`interactionMode="mindmap"` remains available as an explicit override.
 
 ## Releases
 
@@ -180,8 +191,9 @@ The release script requires a clean worktree, verifies the tag does not already 
 
 ## Extensibility
 
-- Add service-specific properties by typing `JsonCanvasDocument<NodeExtra, EdgeExtra>`.
+- Add service-specific properties by typing `JsonCanvasDocument<NodeExtra, EdgeExtra>` or `MinuCanvasDocument<NodeExtra, EdgeExtra>`.
 - Use `renderNode` to render custom cards while keeping layout, selection, movement, and edge routing.
+- Use document profiles such as `mindMapCanvasProfile`, or define an app profile with `CanvasDocumentProfile`.
 - Use `getNodeDefaults` to control newly-created nodes per tool.
 - Use `onUpload` to persist pasted/dropped image files and return a durable URL.
 - Use `onResolveLink` to enrich pasted/dropped URL nodes with host-provided labels.
