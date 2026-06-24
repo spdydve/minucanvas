@@ -1009,10 +1009,11 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
   )
 
   const navigateSelection = useCallback(
-    (direction: AddDirection) => {
+    (direction: AddDirection, options: { includeEdges?: boolean } = {}) => {
       const origin = selectionPoint()
       if (!origin) return false
 
+      const includeEdges = options.includeEdges ?? true
       const candidates: Array<{ kind: 'node' | 'edge'; id: string; point: Point }> = [
         ...value.nodes
           .filter((node) => !selection.nodeIds.includes(node.id))
@@ -1021,13 +1022,15 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
             id: node.id,
             point: { x: node.x + node.width / 2, y: node.y + node.height / 2 },
           })),
-        ...value.edges.flatMap((edge) => {
-          if (selection.edgeIds.includes(edge.id)) return []
-          const fromNode = nodeById.get(edge.fromNode)
-          const toNode = nodeById.get(edge.toNode)
-          if (!fromNode || !toNode) return []
-          return [{ kind: 'edge' as const, id: edge.id, point: edgeLabelPoint(edge, fromNode, toNode) }]
-        }),
+        ...(includeEdges
+          ? value.edges.flatMap((edge) => {
+              if (selection.edgeIds.includes(edge.id)) return []
+              const fromNode = nodeById.get(edge.fromNode)
+              const toNode = nodeById.get(edge.toNode)
+              if (!fromNode || !toNode) return []
+              return [{ kind: 'edge' as const, id: edge.id, point: edgeLabelPoint(edge, fromNode, toNode) }]
+            })
+          : []),
       ]
 
       const ranked = candidates
@@ -2163,10 +2166,6 @@ ${nodeMarkup}
       return
     }
     if ((event.key === 'Enter' || event.key === 'F2') && !readOnly) {
-      if (resolvedInteractionMode === 'mindmap' && event.key === 'Enter' && !event.altKey && !event.shiftKey && selection.nodeIds.length === 1 && createMindMapNode('sibling')) {
-        event.preventDefault()
-        return
-      }
       if (selection.nodeIds.length === 1) {
         event.preventDefault()
         setEditingNodeId(selection.nodeIds[0] ?? null)
@@ -2186,6 +2185,11 @@ ${nodeMarkup}
     const arrowDirection = directionFromArrowKey(event.key)
     if (!mod && event.altKey && !event.shiftKey && arrowDirection && navigateSelection(arrowDirection)) {
       event.preventDefault()
+      return
+    }
+    if (!mod && !event.altKey && !event.shiftKey && arrowDirection && resolvedInteractionMode === 'mindmap') {
+      event.preventDefault()
+      navigateSelection(arrowDirection, { includeEdges: false })
       return
     }
     if (!mod && !event.altKey && !event.shiftKey) {

@@ -10,6 +10,7 @@ import type { CanvasSelection, JsonCanvasDocument } from './types'
 
 function renderMindMapHarness(initialDocument: JsonCanvasDocument, initialSelection: CanvasSelection) {
   let latestDocument = initialDocument
+  let latestSelection = initialSelection
 
   function Harness() {
     const [document, setDocument] = useState(initialDocument)
@@ -23,14 +24,21 @@ function renderMindMapHarness(initialDocument: JsonCanvasDocument, initialSelect
         }}
         selectedNodeIds={selection.nodeIds}
         selectedEdgeIds={selection.edgeIds}
-        onSelectionChange={setSelection}
+        onSelectionChange={(next) => {
+          latestSelection = next
+          setSelection(next)
+        }}
         documentProfile={mindMapCanvasProfile}
       />
     )
   }
 
   const view = render(<Harness />)
-  return { ...view, get latestDocument() { return latestDocument } }
+  return {
+    ...view,
+    get latestDocument() { return latestDocument },
+    get latestSelection() { return latestSelection },
+  }
 }
 
 describe('MinuCanvas mind map editing', () => {
@@ -61,6 +69,26 @@ describe('MinuCanvas mind map editing', () => {
     expect(secondChild.text).toBe('')
     expect(view.latestDocument.edges).toContainEqual(expect.objectContaining({ fromNode: firstChild.id, toNode: secondChild.id }))
     expect(view.container.querySelector('[contenteditable="true"]')).toBeTruthy()
+  })
+
+  it('navigates between nodes with arrows and opens the selected node for editing with Enter', async () => {
+    const initialDocument: JsonCanvasDocument = {
+      nodes: [
+        createCanvasNode({ id: 'Root', text: 'Root', shape: 'text', x: 0, y: 0, width: 120, height: 48 }),
+        createCanvasNode({ id: 'Child', text: 'Child', shape: 'text', x: 300, y: 0, width: 120, height: 48 }),
+      ],
+      edges: [{ id: 'root-child', fromNode: 'Root', toNode: 'Child', fromEnd: 'none', toEnd: 'none', style: { routing: 'curved' } }],
+    }
+    const view = renderMindMapHarness(initialDocument, { nodeIds: ['Root'], edgeIds: [] })
+    const canvas = view.container.querySelector<HTMLElement>('.minucanvas')!
+
+    fireEvent.keyDown(canvas, { key: 'ArrowRight' })
+
+    await waitFor(() => expect(view.latestSelection).toEqual({ nodeIds: ['Child'], edgeIds: [] }))
+    fireEvent.keyDown(canvas, { key: 'Enter' })
+
+    await waitFor(() => expect(view.container.querySelector('[data-minucanvas-node-id="Child"] [contenteditable="true"]')).toBeTruthy())
+    expect(view.latestDocument.nodes).toHaveLength(2)
   })
 
   it('creates editable siblings on repeated Enter even when the current node is empty', async () => {
