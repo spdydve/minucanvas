@@ -266,7 +266,7 @@ function textNoteSize(text: string, fontSize = 14): { width: number; height: num
 }
 
 function editableText(element: HTMLElement): string {
-  return element.innerText.replace(/\n$/, '')
+  return (element.innerText ?? element.textContent ?? '').replace(/\n$/, '')
 }
 
 function insertEditableLineBreak(element: HTMLElement) {
@@ -581,6 +581,27 @@ function recenterMovedNodeEdges<NodeExtra extends Record<string, unknown>, EdgeE
   }
 }
 
+function documentWithCommittedNodeText<NodeExtra extends Record<string, unknown>, EdgeExtra extends Record<string, unknown>>(
+  document: JsonCanvasDocument<NodeExtra, EdgeExtra>,
+  nodeId: string,
+  text: string,
+): JsonCanvasDocument<NodeExtra, EdgeExtra> {
+  const node = document.nodes.find((item) => item.id === nodeId)
+  if (!node) return document
+  const size = node.type === 'text' && node.shape === 'text' ? textNoteSize(text, node.style?.fontSize ?? 14) : null
+  if (text === nodeLabel(node) && (!size || (size.width === node.width && size.height === node.height))) return document
+  return updateNode(document, nodeId, (current) => {
+    const next = { ...current }
+    if (current.type === 'text') next.text = text
+    if (current.type === 'group') next.label = text
+    if (size && current.type === 'text' && current.shape === 'text') {
+      next.width = size.width
+      next.height = size.height
+    }
+    return next
+  })
+}
+
 function DefaultNodeContent({ node, editing }: { node: CanvasNode; editing: boolean }) {
   const label = nodeLabel(node)
   if (editing) return <>{label}</>
@@ -647,6 +668,7 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
   const rootRef = useRef<HTMLDivElement>(null)
   const contextMenuRef = useRef<HTMLDivElement>(null)
   const imageReplaceInputRef = useRef<HTMLInputElement>(null)
+  const skipTextBlurCommitRef = useRef<Set<string>>(new Set())
   const dragRef = useRef<DragState<NodeExtra>>(null)
   const addSequenceRef = useRef<{ sourceNodeId: string; direction: AddDirection; lastNodeId: string } | null>(null)
   const clipboardRef = useRef<CanvasClipboardPayload<NodeExtra, EdgeExtra> | null>(null)
@@ -875,22 +897,24 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
     [emitChange, emitSelection, nodeById, readOnly, value],
   )
 
-  const createMindMapNode = useCallback((kind: 'child' | 'sibling', side?: 'left' | 'right') => {
+  const createMindMapNode = useCallback((kind: 'child' | 'sibling', side?: 'left' | 'right', commit?: { nodeId: string; text: string }) => {
     if (readOnly || selection.nodeIds.length !== 1) return false
+    const baseValue = commit ? documentWithCommittedNodeText(value, commit.nodeId, commit.text) : value
+    const docNodeById = new Map(baseValue.nodes.map((node) => [node.id, node]))
     const selectedNodeId = selection.nodeIds[0] ?? ''
-    const selectedNode = nodeById.get(selectedNodeId)
+    const selectedNode = docNodeById.get(selectedNodeId)
     if (!selectedNode || selectedNode.type === 'group' || selectedNode.type === 'image' || selectedNode.type === 'link') return false
-    const incoming = value.edges.find((edge) => edge.toNode === selectedNode.id)
+    const incoming = baseValue.edges.find((edge) => edge.toNode === selectedNode.id)
     const parentId = kind === 'sibling' && incoming ? incoming.fromNode : selectedNode.id
-    const parentNode = nodeById.get(parentId)
+    const parentNode = docNodeById.get(parentId)
     if (!parentNode) return false
 
     const parentCenter = { x: parentNode.x + parentNode.width / 2, y: parentNode.y + parentNode.height / 2 }
     const selectedCenter = { x: selectedNode.x + selectedNode.width / 2, y: selectedNode.y + selectedNode.height / 2 }
-    const branchReferenceNode = kind === 'child' && incoming ? nodeById.get(incoming.fromNode) : parentNode
+    const branchReferenceNode = kind === 'child' && incoming ? docNodeById.get(incoming.fromNode) : parentNode
     const branchReferenceCenter = branchReferenceNode ? { x: branchReferenceNode.x + branchReferenceNode.width / 2, y: branchReferenceNode.y + branchReferenceNode.height / 2 } : parentCenter
     const branchSide = side ?? (selectedCenter.x < branchReferenceCenter.x ? 'left' : 'right')
-    const label = 'New idea'
+    const label = ''
     const size = textNoteSize(label, selectedNode.style?.fontSize ?? 14)
     const newNode = createCanvasNode<NodeExtra>({
       id: createId('idea'),
@@ -909,13 +933,13 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
       toEnd: 'none',
       style: { routing: 'curved' },
     } as Partial<CanvasEdge<EdgeExtra>>)
-    const next = layoutMindMap({ ...value, nodes: [...value.nodes, newNode], edges: [...value.edges, edge] })
+    const next = layoutMindMap({ ...baseValue, nodes: [...baseValue.nodes, newNode], edges: [...baseValue.edges, edge] })
     emitChange(next, 'create-node')
     emitSelection({ nodeIds: [newNode.id], edgeIds: [] })
     setEditingNodeId(newNode.id)
     requestAnimationFrame(() => rootRef.current?.focus())
     return true
-  }, [emitChange, emitSelection, nodeById, readOnly, selection.nodeIds, value])
+  }, [emitChange, emitSelection, readOnly, selection.nodeIds, value])
 
   const selectionPoint = useCallback((): Point | null => {
     const selectedNode = selection.nodeIds.length === 1 ? nodeById.get(selection.nodeIds[0] ?? '') : null
@@ -2259,23 +2283,11 @@ ${nodeMarkup}
   }, [])
 
   const handleNodeTextBlur = useCallback((node: CanvasNode<NodeExtra>, text: string) => {
+    if (skipTextBlurCommitRef.current.delete(node.id)) return
     setEditingNodeId(null)
     if (readOnly) return
-    const size = node.type === 'text' && node.shape === 'text' ? textNoteSize(text, node.style?.fontSize ?? 14) : null
-    if (text === nodeLabel(node) && (!size || (size.width === node.width && size.height === node.height))) return
-    emitChange(
-      updateNode(value, node.id, (current) => {
-        const next = { ...current }
-        if (current.type === 'text') next.text = text
-        if (current.type === 'group') next.label = text
-        if (size && current.type === 'text' && current.shape === 'text') {
-          next.width = size.width
-          next.height = size.height
-        }
-        return next
-      }),
-      'update-node',
-    )
+    const next = documentWithCommittedNodeText(value, node.id, text)
+    if (next !== value) emitChange(next, 'update-node')
   }, [emitChange, readOnly, value])
 
   const connectorPreview = dragRef.current?.kind === 'connector' ? dragRef.current : null
@@ -2558,7 +2570,29 @@ ${nodeMarkup}
                     handleNodeTextInput(node, event.currentTarget)
                     return
                   }
-                  if (((event.metaKey || event.ctrlKey) && event.key === 'Enter') || (resolvedInteractionMode === 'mindmap' && event.key === 'Enter' && !event.shiftKey)) {
+                  if (resolvedInteractionMode === 'mindmap' && !readOnly) {
+                    if (event.key === 'Tab') {
+                      event.preventDefault()
+                      skipTextBlurCommitRef.current.add(node.id)
+                      if (createMindMapNode('child', undefined, { nodeId: node.id, text: editableText(event.currentTarget) })) {
+                        window.setTimeout(() => skipTextBlurCommitRef.current.delete(node.id), 100)
+                      } else {
+                        skipTextBlurCommitRef.current.delete(node.id)
+                      }
+                      return
+                    }
+                    if (event.key === 'Enter' && !event.shiftKey && !event.metaKey && !event.ctrlKey) {
+                      event.preventDefault()
+                      skipTextBlurCommitRef.current.add(node.id)
+                      if (createMindMapNode('sibling', undefined, { nodeId: node.id, text: editableText(event.currentTarget) })) {
+                        window.setTimeout(() => skipTextBlurCommitRef.current.delete(node.id), 100)
+                      } else {
+                        skipTextBlurCommitRef.current.delete(node.id)
+                      }
+                      return
+                    }
+                  }
+                  if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
                     event.preventDefault()
                     event.currentTarget.blur()
                   }
