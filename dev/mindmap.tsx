@@ -45,8 +45,6 @@ function MindMapFullscreenExample() {
   const [document, setDocument] = useState<JsonCanvasDocument>(initialDocument)
   const [tool, setTool] = useState<CanvasTool>('select')
   const [selected, setSelected] = useState({ nodeIds: [] as string[], edgeIds: [] as string[] })
-  const [styleDrawerOpen, setStyleDrawerOpen] = useState(false)
-  const hasSelection = selected.nodeIds.length > 0 || selected.edgeIds.length > 0
 
   async function handleDemoUpload(file: File) {
     return URL.createObjectURL(file)
@@ -65,31 +63,22 @@ function MindMapFullscreenExample() {
           <h1>MinuCanvas mind map</h1>
           <span>Arrows navigate, Enter edits, Tab creates children.</span>
         </div>
-        <CanvasToolbar tool={tool} onToolChange={setTool} className="fullscreen-topbar__toolbar" orientation="horizontal" tools={['select', 'hand', 'text', 'arrow', 'line']} />
         <nav className="fullscreen-tools" aria-label="Canvas actions">
           <button onClick={() => canvasRef.current?.fitView()}>Fit</button>
           <button onClick={() => canvasRef.current?.resetView()}>Reset view</button>
           <button onClick={resetMindMap}>Reset map</button>
-          <button className={styleDrawerOpen ? 'active' : undefined} disabled={!hasSelection} onClick={() => setStyleDrawerOpen((open) => !open)}>Style</button>
           <a href="/fullscreen.html">Flow</a>
           <a href="/">Demo</a>
         </nav>
       </header>
       <main className="fullscreen-canvas">
-        {styleDrawerOpen && hasSelection ? (
-          <aside className="fullscreen-drawer" aria-label="Style drawer">
-            <div className="fullscreen-drawer__header">
-              <span>Style</span>
-              <button type="button" onClick={() => setStyleDrawerOpen(false)} aria-label="Close style drawer">×</button>
-            </div>
-            <CanvasStyleToolbar
-              value={document}
-              selection={selected}
-              onChange={(next) => setDocument(next)}
-              className="fullscreen-drawer__style-toolbar"
-            />
-          </aside>
-        ) : null}
+        <CanvasToolbar tool={tool} onToolChange={setTool} className="fullscreen-canvas__toolbar" orientation="vertical" tools={['select', 'hand', 'text', 'arrow', 'line']} />
+        <CanvasStyleToolbar
+          value={document}
+          selection={selected}
+          onChange={(next) => setDocument(next)}
+          className="fullscreen-canvas__style-toolbar"
+        />
         <MinuCanvas
           ref={canvasRef}
           value={document}
