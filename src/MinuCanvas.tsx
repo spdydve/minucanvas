@@ -1078,28 +1078,30 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
   )
 
   const createConnectedNode = useCallback(
-    (sourceNode: CanvasNode<NodeExtra>, direction: AddDirection) => {
-      if (readOnly) return
+    (sourceNode: CanvasNode<NodeExtra>, direction: AddDirection, commit?: { nodeId: string; text: string }) => {
+      if (readOnly) return false
+      const baseValue = commit ? documentWithCommittedNodeText(value, commit.nodeId, commit.text) : value
+      const docSourceNode = baseValue.nodes.find((node) => node.id === sourceNode.id) ?? sourceNode
       const gap = 140
-      const width = sourceNode.width
-      const height = sourceNode.height
-      const siblingCount = value.edges.filter(
-        (edge) => edge.fromNode === sourceNode.id && (edge.fromAnchor?.side ?? edge.fromSide) === direction,
+      const width = docSourceNode.width
+      const height = docSourceNode.height
+      const siblingCount = baseValue.edges.filter(
+        (edge) => edge.fromNode === docSourceNode.id && (edge.fromAnchor?.side ?? edge.fromSide) === direction,
       ).length
       const laneMagnitude = Math.ceil(siblingCount / 2)
       const laneSign = siblingCount === 0 ? 0 : siblingCount % 2 === 1 ? -1 : 1
       const laneOffset = laneSign * laneMagnitude * ((direction === 'left' || direction === 'right' ? height : width) + 44)
       let rect: Pick<CanvasNode, 'x' | 'y' | 'width' | 'height'> = {
         x: direction === 'right'
-          ? sourceNode.x + sourceNode.width + gap
+          ? docSourceNode.x + docSourceNode.width + gap
           : direction === 'left'
-            ? sourceNode.x - width - gap
-            : sourceNode.x + sourceNode.width / 2 - width / 2 + laneOffset,
+            ? docSourceNode.x - width - gap
+            : docSourceNode.x + docSourceNode.width / 2 - width / 2 + laneOffset,
         y: direction === 'bottom'
-          ? sourceNode.y + sourceNode.height + gap
+          ? docSourceNode.y + docSourceNode.height + gap
           : direction === 'top'
-            ? sourceNode.y - height - gap
-            : sourceNode.y + sourceNode.height / 2 - height / 2 + laneOffset,
+            ? docSourceNode.y - height - gap
+            : docSourceNode.y + docSourceNode.height / 2 - height / 2 + laneOffset,
         width,
         height,
       }
@@ -1111,7 +1113,7 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
 
       const nudgeDistance = direction === 'left' || direction === 'right' ? height + 44 : width + 44
       let attempts = 0
-      while (attempts < 12 && value.nodes.some((node) => rectsOverlap(rect, node))) {
+      while (attempts < 12 && baseValue.nodes.some((node) => rectsOverlap(rect, node))) {
         if (direction === 'left' || direction === 'right') {
           rect = { ...rect, y: rect.y + (laneSign < 0 ? -nudgeDistance : nudgeDistance) }
         } else {
@@ -1121,27 +1123,28 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
       }
 
       const node = createCanvasNode<NodeExtra>({
-        type: sourceNode.type,
-        shape: sourceNode.shape,
+        type: docSourceNode.type,
+        shape: docSourceNode.shape,
         width: rect.width,
         height: rect.height,
         x: rect.x,
         y: rect.y,
         text: undefined,
       } as Partial<CanvasNode<NodeExtra>>)
-      const edge = createCanvasEdge<EdgeExtra>(sourceNode.id, node.id, {
-        fromAnchor: defaultEdgeAnchorForSide(sourceNode, direction),
+      const edge = createCanvasEdge<EdgeExtra>(docSourceNode.id, node.id, {
+        fromAnchor: defaultEdgeAnchorForSide(docSourceNode, direction),
         toAnchor: defaultEdgeAnchorForSide(node, oppositeSide(direction)),
         toEnd: 'arrow',
       } as Partial<CanvasEdge<EdgeExtra>>)
 
-      emitChange({ nodes: [...value.nodes, node], edges: [...value.edges, edge] }, 'create-node')
+      emitChange({ ...baseValue, nodes: [...baseValue.nodes, node], edges: [...baseValue.edges, edge] }, 'create-node')
       emitSelection({ nodeIds: [node.id], edgeIds: [] })
-      addSequenceRef.current = { sourceNodeId: sourceNode.id, direction, lastNodeId: node.id }
+      addSequenceRef.current = { sourceNodeId: docSourceNode.id, direction, lastNodeId: node.id }
       setActiveTool('select')
       setEditingNodeId(node.id)
+      return true
     },
-    [emitChange, emitSelection, gridSize, readOnly, setActiveTool, snapToGrid, value.edges, value.nodes],
+    [emitChange, emitSelection, gridSize, readOnly, setActiveTool, snapToGrid, value],
   )
 
   const connectorAnchorAtPoint = useCallback(
@@ -2566,6 +2569,21 @@ ${nodeMarkup}
                     event.preventDefault()
                     setEditingNodeId(null)
                     rootRef.current?.focus()
+                    return
+                  }
+                  const editedAddDirection = directionFromArrowKey(event.key)
+                  if ((event.metaKey || event.ctrlKey) && editedAddDirection && !readOnly) {
+                    event.preventDefault()
+                    skipTextBlurCommitRef.current.add(node.id)
+                    const committedText = editableText(event.currentTarget)
+                    const created = resolvedInteractionMode === 'mindmap'
+                      ? (editedAddDirection === 'left' || editedAddDirection === 'right') && createMindMapNode('child', editedAddDirection, { nodeId: node.id, text: committedText })
+                      : Boolean(createConnectedNode(node, editedAddDirection, { nodeId: node.id, text: committedText }))
+                    if (created) {
+                      window.setTimeout(() => skipTextBlurCommitRef.current.delete(node.id), 100)
+                    } else {
+                      skipTextBlurCommitRef.current.delete(node.id)
+                    }
                     return
                   }
                   if (event.altKey && event.key === 'Enter') {
