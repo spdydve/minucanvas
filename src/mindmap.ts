@@ -1,4 +1,5 @@
 import { defaultEdgeAnchorForSide } from './geometry'
+import { createCanvasNode } from './model'
 import type { CanvasEdge, CanvasNode, CanvasEdgeRouting, JsonCanvasDocument, JsonCanvasEdgeEnd, JsonCanvasSide } from './types'
 
 export type MindMapSide = 'left' | 'right'
@@ -15,6 +16,17 @@ export interface MindMapLayoutOptions {
   edgeEnds?: MindMapEdgeEnds | undefined
 }
 
+export interface MindMapDefaultDocumentOptions {
+  rootId?: string | undefined
+  rootText?: string | undefined
+  x?: number | undefined
+  y?: number | undefined
+  width?: number | undefined
+  height?: number | undefined
+}
+
+export type MindMapProfileOptions = MindMapLayoutOptions & MindMapDefaultDocumentOptions
+
 interface MindMapNodePlacement {
   node: CanvasNode
   center: { x: number; y: number }
@@ -23,6 +35,30 @@ interface MindMapNodePlacement {
 const DEFAULT_HORIZONTAL_GAP = 120
 const DEFAULT_VERTICAL_GAP = 28
 const DEFAULT_GRID_SIZE = 20
+const DEFAULT_ROOT_ID = 'root'
+const DEFAULT_ROOT_TEXT = 'Central topic'
+const DEFAULT_ROOT_X = 14
+const DEFAULT_ROOT_Y = 62
+const DEFAULT_ROOT_WIDTH = 132
+const DEFAULT_ROOT_HEIGHT = 36
+
+export function createDefaultMindMapDocument<NodeExtra extends Record<string, unknown> = Record<string, unknown>, EdgeExtra extends Record<string, unknown> = Record<string, unknown>>(
+  options: MindMapDefaultDocumentOptions = {},
+): JsonCanvasDocument<NodeExtra, EdgeExtra> {
+  return {
+    nodes: [createCanvasNode<NodeExtra>({
+      id: options.rootId ?? DEFAULT_ROOT_ID,
+      type: 'text',
+      text: options.rootText ?? DEFAULT_ROOT_TEXT,
+      shape: 'text',
+      x: options.x ?? DEFAULT_ROOT_X,
+      y: options.y ?? DEFAULT_ROOT_Y,
+      width: options.width ?? DEFAULT_ROOT_WIDTH,
+      height: options.height ?? DEFAULT_ROOT_HEIGHT,
+    } as Partial<CanvasNode<NodeExtra>>)],
+    edges: [],
+  }
+}
 
 function nodeCenter(node: Pick<CanvasNode, 'x' | 'y' | 'width' | 'height'>): { x: number; y: number } {
   return { x: node.x + node.width / 2, y: node.y + node.height / 2 }

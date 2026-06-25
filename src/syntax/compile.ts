@@ -6,7 +6,7 @@ import { parseMinuDiagramSyntax } from './parse'
 import type { MinuDiagramCompileOptions, MinuDiagramCompileResult, MinuDiagramConnection, MinuDiagramDiagnostic, MinuDiagramNode, ParsedMinuDiagram } from './types'
 
 const DEFAULT_WIDTH = 220
-const DEFAULT_HEIGHT = 112
+const DEFAULT_HEIGHT = 88
 const IMAGE_WIDTH = 320
 const IMAGE_HEIGHT = 200
 const DIAMOND_WIDTH = 240

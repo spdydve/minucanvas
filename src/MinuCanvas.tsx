@@ -755,7 +755,7 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
       const shape = shapeForTool(sourceTool)
       const defaults: Partial<CanvasNode<NodeExtra>> = getNodeDefaults?.(sourceTool, canvasPoint) ?? {}
       const width = defaults.width ?? (sourceTool === 'text' ? 180 : sourceTool === 'diamond' ? DEFAULT_DIAMOND_WIDTH : sourceTool === 'ellipse' ? DEFAULT_ELLIPSE_SIZE : 180)
-      const height = defaults.height ?? (sourceTool === 'text' ? 48 : sourceTool === 'diamond' ? DEFAULT_DIAMOND_HEIGHT : sourceTool === 'ellipse' ? DEFAULT_ELLIPSE_SIZE : 100)
+      const height = defaults.height ?? (sourceTool === 'text' ? 48 : sourceTool === 'diamond' ? DEFAULT_DIAMOND_HEIGHT : sourceTool === 'ellipse' ? DEFAULT_ELLIPSE_SIZE : 88)
       const point = snapToGrid ? snapPoint(canvasPoint, gridSize) : canvasPoint
       const partial = {
         ...defaults,

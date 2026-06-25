@@ -152,7 +152,9 @@ See [`docs/minu-diagram-syntax.md`](docs/minu-diagram-syntax.md) for the propose
 For keyboard-first mind map editing, prefer the built-in profile:
 
 ```tsx
-import { MinuCanvas, mindMapCanvasProfile } from '@dpklabs/minucanvas'
+import { MinuCanvas, createDefaultMindMapDocument, mindMapCanvasProfile } from '@dpklabs/minucanvas'
+
+const initialMindMap = createDefaultMindMapDocument({ rootText: 'Product plan' })
 
 <MinuCanvas documentProfile={mindMapCanvasProfile} value={value} onChange={setValue} />
 ```

@@ -1,7 +1,7 @@
 import type { CanvasAlignment, CanvasDistribution, CanvasEdge, CanvasNode, CanvasSelection, CanvasShape, CanvasTool, JsonCanvasDocument } from './types'
 
 const DEFAULT_NODE_WIDTH = 220
-const DEFAULT_NODE_HEIGHT = 120
+const DEFAULT_NODE_HEIGHT = 88
 const DEFAULT_DIAMOND_WIDTH = 240
 const DEFAULT_DIAMOND_HEIGHT = 160
 const DEFAULT_ELLIPSE_SIZE = 160

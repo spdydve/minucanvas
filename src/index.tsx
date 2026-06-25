@@ -43,7 +43,7 @@ export {
   nodeCenter,
   sideForPoint,
 } from './geometry'
-export { layoutMindMap } from './mindmap'
+export { createDefaultMindMapDocument, layoutMindMap } from './mindmap'
 export {
   applyCanvasDocumentProfileLayout,
   builtInCanvasDocumentProfiles,
@@ -101,6 +101,6 @@ export type {
   MinuCanvasDocument,
   MinuCanvasProps,
 } from './types'
-export type { MindMapEdgeEnds, MindMapLayoutOptions, MindMapSide } from './mindmap'
+export type { MindMapDefaultDocumentOptions, MindMapEdgeEnds, MindMapLayoutOptions, MindMapProfileOptions, MindMapSide } from './mindmap'
 export type { CanvasToolbarProps } from './CanvasToolbar'
 export type { CanvasStyleToolbarProps } from './CanvasStyleToolbar'

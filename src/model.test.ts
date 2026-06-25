@@ -39,6 +39,12 @@ describe('canvas model helpers', () => {
     expect(duplicated.selection.edgeIds).toHaveLength(1)
   })
 
+  it('creates default flow nodes with a compact height', () => {
+    const node = createCanvasNode({ type: 'text', shape: 'rounded-rectangle' })
+    expect(node.width).toBe(220)
+    expect(node.height).toBe(88)
+  })
+
   it('creates default diamonds at a 3:2 grid-friendly ratio', () => {
     const node = createCanvasNode({ type: 'text', shape: 'diamond' })
     expect(node.width).toBe(240)

@@ -1,4 +1,4 @@
-import { layoutMindMap, type MindMapLayoutOptions } from './mindmap'
+import { createDefaultMindMapDocument, layoutMindMap, type MindMapProfileOptions } from './mindmap'
 import { emptyCanvas } from './model'
 import type { AnyCanvasDocumentProfile, CanvasDocumentKind, CanvasDocumentProfile, CanvasInteractionMode, MinuCanvasDocument } from './types'
 
@@ -9,11 +9,11 @@ export const standardCanvasProfile: CanvasDocumentProfile = {
   createDefaultDocument: () => emptyCanvas(),
 }
 
-export const mindMapCanvasProfile: CanvasDocumentProfile<MindMapLayoutOptions> = {
+export const mindMapCanvasProfile: CanvasDocumentProfile<MindMapProfileOptions> = {
   kind: 'mindmap',
   label: 'Mind map',
   interactionMode: 'mindmap',
-  createDefaultDocument: () => emptyCanvas(),
+  createDefaultDocument: createDefaultMindMapDocument,
   layout: layoutMindMap,
 }
 

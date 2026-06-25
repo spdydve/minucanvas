@@ -24,6 +24,23 @@ describe('canvas document profiles', () => {
     expect(resolveCanvasInteractionMode(undefined)).toBe('canvas')
   })
 
+  it('creates a default mind map document with a compact text root', () => {
+    const document = mindMapCanvasProfile.createDefaultDocument?.()
+
+    expect(document?.nodes).toHaveLength(1)
+    expect(document?.edges).toHaveLength(0)
+    expect(document?.nodes[0]).toMatchObject({
+      id: 'root',
+      type: 'text',
+      text: 'Central topic',
+      shape: 'text',
+      x: 14,
+      y: 62,
+      width: 132,
+      height: 36,
+    })
+  })
+
   it('uses the mind map profile as the first profile-backed layout implementation', () => {
     const document: JsonCanvasDocument = {
       nodes: [

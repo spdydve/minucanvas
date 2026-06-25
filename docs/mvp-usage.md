@@ -96,9 +96,11 @@ For profile-backed usage, use the built-in mind map profile:
 import {
   MinuCanvas,
   applyCanvasDocumentProfileLayout,
+  createDefaultMindMapDocument,
   mindMapCanvasProfile,
 } from '@dpklabs/minucanvas'
 
+const emptyMindMapDocument = createDefaultMindMapDocument({ rootText: 'Product plan' })
 const mindMapDocument = applyCanvasDocumentProfileLayout(value, mindMapCanvasProfile, {
   rootId: 'Product',
 })
