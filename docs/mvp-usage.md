@@ -120,6 +120,7 @@ See [`minu-diagram-syntax.md`](./minu-diagram-syntax.md) for the full syntax pro
 
 - Select: click a shape, text, image, link, group, line, or arrow.
 - Multi-select: `Shift` + click items, or drag a marquee selection box with the select tool.
+- Create shapes: click a shape tool to place a default-sized shape, or drag to draw a custom-sized shape. Hold `Shift` while dragging a shape to constrain width/height.
 - Move: drag selected items, or use arrow keys. With snap enabled, arrow movement uses the grid size.
 - Keyboard navigation: `Alt/Option + Arrow` jumps selection to the nearest node or connector in that direction.
 - Pan: use the hand tool, hold `Shift`/`Space`, middle mouse, or two-finger trackpad scroll.

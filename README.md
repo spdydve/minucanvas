@@ -95,7 +95,9 @@ Arrow and line tools are separate drawing tools, but both can function as connec
 
 With the arrow or line tool active, start drags from a shape outline/edge rather than the middle of the shape to create a connector. Arrow creates an arrowhead; line creates a plain line. You can also start slightly outside the edge; the hit target resolves to the nearest outline point. Dragging on empty canvas space creates a free-standing line/arrow that is not connected to nodes. Hold `Shift` while drawing to snap the line to 15° angle increments, including perfectly horizontal and vertical lines. Arrows/lines have an expanded invisible hit area, so selection and double-click label editing do not require pixel-perfect clicks. Select a connected arrow/line to reveal draggable start/end handles. Drag either handle to another point on a shape outline to reroute it. Double-click an arrow/line or its label to add/edit text.
 
-## Adding connected shapes
+## Adding shapes and connected shapes
+
+Click a shape tool to place a default-sized shape, or drag on the canvas to draw a custom-sized shape. Hold `Shift` while dragging a shape to constrain it to equal width/height.
 
 Select a shape to reveal `+` affordances at each edge. Click one to create a new connected shape a standard distance away in that direction. If the target spot is occupied, the new shape nudges farther in that direction.
 

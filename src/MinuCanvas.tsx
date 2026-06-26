@@ -112,6 +112,13 @@ type DragState<NodeExtra extends Record<string, unknown>> =
       childOriginals: Map<string, CanvasNode<NodeExtra>>
     }
   | {
+      kind: 'create-node'
+      tool: CanvasTool
+      startPoint: Point
+      pointer: Point
+      shiftKey: boolean
+    }
+  | {
       kind: 'selection-box'
       startPoint: Point
       pointer: Point
@@ -124,7 +131,7 @@ const MIN_ZOOM = 0.2
 const MAX_ZOOM = 2.5
 const ZOOM_STEP = 0.12
 const CONNECTOR_MIDPOINT_SNAP_PX = 14
-const CONNECTOR_EDGE_HIT_PX = 18
+const CONNECTOR_HIT_ZONE_PX = 18
 const MIN_NODE_SIZE = 48
 const DEFAULT_DIAMOND_WIDTH = 240
 const DEFAULT_DIAMOND_HEIGHT = 160
@@ -506,6 +513,29 @@ function snapMovingBoundsToGuides(
   }
 }
 
+function createNodeRectFromPoints(start: Point, pointer: Point, tool: CanvasTool, constrain: boolean, snapToGrid: boolean, gridSize: number): Pick<CanvasNode, 'x' | 'y' | 'width' | 'height'> {
+  const rawDx = pointer.x - start.x
+  const rawDy = pointer.y - start.y
+  const constrainedSize = Math.max(Math.abs(rawDx), Math.abs(rawDy))
+  const dx = constrain ? Math.sign(rawDx || 1) * constrainedSize : rawDx
+  const dy = constrain ? Math.sign(rawDy || 1) * constrainedSize : rawDy
+  let x = Math.min(start.x, start.x + dx)
+  let y = Math.min(start.y, start.y + dy)
+  let width = Math.max(MIN_NODE_SIZE, Math.abs(dx))
+  let height = Math.max(tool === 'text' ? 36 : MIN_NODE_SIZE, Math.abs(dy))
+
+  if (snapToGrid) {
+    const topLeft = snapPoint({ x, y }, gridSize)
+    const bottomRight = snapPoint({ x: x + width, y: y + height }, gridSize)
+    x = topLeft.x
+    y = topLeft.y
+    width = Math.max(MIN_NODE_SIZE, bottomRight.x - topLeft.x)
+    height = Math.max(tool === 'text' ? 36 : MIN_NODE_SIZE, bottomRight.y - topLeft.y)
+  }
+
+  return { x, y, width, height }
+}
+
 function resizeNodeRect(node: CanvasNode, handle: ResizeHandle, dx: number, dy: number, snapToGrid: boolean, gridSize: number): Pick<CanvasNode, 'x' | 'y' | 'width' | 'height'> {
   let x = node.x
   let y = node.y
@@ -794,21 +824,18 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
     [onChange, value],
   )
 
-  const createNodeAt = useCallback(
-    (canvasPoint: Point, sourceTool: CanvasTool): CanvasNode<NodeExtra> => {
+  const createNodeInRect = useCallback(
+    (rect: Pick<CanvasNode, 'x' | 'y' | 'width' | 'height'>, sourceTool: CanvasTool, defaultsPoint: Point): CanvasNode<NodeExtra> => {
       const shape = shapeForTool(sourceTool)
-      const defaults: Partial<CanvasNode<NodeExtra>> = getNodeDefaults?.(sourceTool, canvasPoint) ?? {}
-      const width = defaults.width ?? (sourceTool === 'text' ? 180 : sourceTool === 'diamond' ? DEFAULT_DIAMOND_WIDTH : sourceTool === 'ellipse' ? DEFAULT_ELLIPSE_SIZE : 180)
-      const height = defaults.height ?? (sourceTool === 'text' ? 48 : sourceTool === 'diamond' ? DEFAULT_DIAMOND_HEIGHT : sourceTool === 'ellipse' ? DEFAULT_ELLIPSE_SIZE : 88)
-      const point = snapToGrid ? snapPoint(canvasPoint, gridSize) : canvasPoint
+      const defaults: Partial<CanvasNode<NodeExtra>> = getNodeDefaults?.(sourceTool, defaultsPoint) ?? {}
       const partial = {
         ...defaults,
         type: defaults.type ?? 'text',
         shape,
-        x: point.x - width / 2,
-        y: point.y - height / 2,
-        width,
-        height,
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
         text: defaults.text,
       } as Partial<CanvasNode<NodeExtra>>
       const node = createCanvasNode<NodeExtra>(partial)
@@ -817,7 +844,18 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
       setActiveTool('select')
       return node
     },
-    [emitChange, emitSelection, getNodeDefaults, gridSize, setActiveTool, snapToGrid, value],
+    [emitChange, emitSelection, getNodeDefaults, setActiveTool, value],
+  )
+
+  const createNodeAt = useCallback(
+    (canvasPoint: Point, sourceTool: CanvasTool): CanvasNode<NodeExtra> => {
+      const defaults: Partial<CanvasNode<NodeExtra>> = getNodeDefaults?.(sourceTool, canvasPoint) ?? {}
+      const width = defaults.width ?? (sourceTool === 'text' ? 180 : sourceTool === 'diamond' ? DEFAULT_DIAMOND_WIDTH : sourceTool === 'ellipse' ? DEFAULT_ELLIPSE_SIZE : 180)
+      const height = defaults.height ?? (sourceTool === 'text' ? 48 : sourceTool === 'diamond' ? DEFAULT_DIAMOND_HEIGHT : sourceTool === 'ellipse' ? DEFAULT_ELLIPSE_SIZE : 88)
+      const point = snapToGrid ? snapPoint(canvasPoint, gridSize) : canvasPoint
+      return createNodeInRect({ x: point.x - width / 2, y: point.y - height / 2, width, height }, sourceTool, point)
+    },
+    [createNodeInRect, getNodeDefaults, gridSize, snapToGrid],
   )
 
   const deleteCurrentSelection = useCallback(() => {
@@ -1211,7 +1249,7 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
 
   const connectorAnchorAtPoint = useCallback(
     (point: Point, excludeNodeId?: string): { node: CanvasNode<NodeExtra>; anchor: CanvasEdgeAnchor; point: Point } | null => {
-      const hitThreshold = CONNECTOR_EDGE_HIT_PX / viewport.zoom
+      const hitThreshold = CONNECTOR_HIT_ZONE_PX / viewport.zoom
       const snapThreshold = CONNECTOR_MIDPOINT_SNAP_PX / viewport.zoom
       let closest: { node: CanvasNode<NodeExtra>; anchor: CanvasEdgeAnchor; point: Point; distance: number } | null = null
 
@@ -1554,7 +1592,7 @@ ${nodeMarkup}
       return
     }
 
-    if ((event.shiftKey || panningModifierActive) && !isConnectorTool(activeTool)) {
+    if ((event.shiftKey || panningModifierActive) && activeTool === 'select') {
       event.currentTarget.setPointerCapture(event.pointerId)
       dragRef.current = {
         kind: 'pan',
@@ -1622,7 +1660,7 @@ ${nodeMarkup}
     setActiveGroupId(null)
     rootRef.current?.focus()
     setEditingEdgeId(null)
-    if (event.button === 1 || activeTool === 'hand' || event.altKey || ((event.shiftKey || panningModifierActive) && !isConnectorTool(activeTool))) {
+    if (event.button === 1 || activeTool === 'hand' || event.altKey || ((event.shiftKey || panningModifierActive) && activeTool === 'select')) {
       event.currentTarget.setPointerCapture(event.pointerId)
       dragRef.current = {
         kind: 'pan',
@@ -1633,7 +1671,10 @@ ${nodeMarkup}
     }
 
     if (!readOnly && isNodeTool(activeTool)) {
-      createNodeAt(pointFromEvent(event), activeTool)
+      const point = pointFromEvent(event)
+      event.currentTarget.setPointerCapture(event.pointerId)
+      dragRef.current = { kind: 'create-node', tool: activeTool, startPoint: point, pointer: point, shiftKey: event.shiftKey }
+      forcePointerFrame((frame) => frame + 1)
       return
     }
 
@@ -1712,6 +1753,12 @@ ${nodeMarkup}
 
     if (drag.kind === 'free-edge') {
       dragRef.current = { ...drag, pointer: event.shiftKey ? snapPointToAngle(drag.startPoint, point) : point }
+      forcePointerFrame((frame) => frame + 1)
+      return
+    }
+
+    if (drag.kind === 'create-node') {
+      dragRef.current = { ...drag, pointer: point, shiftKey: event.shiftKey }
       forcePointerFrame((frame) => frame + 1)
       return
     }
@@ -1840,6 +1887,16 @@ ${nodeMarkup}
     undoTransactionPushedRef.current = false
     forcePointerFrame((frame) => frame + 1)
     if (!drag) return
+    if (drag.kind === 'create-node') {
+      const targetPoint = pointFromEvent(event)
+      if (Math.hypot(targetPoint.x - drag.startPoint.x, targetPoint.y - drag.startPoint.y) < 4) {
+        createNodeAt(drag.startPoint, drag.tool)
+      } else {
+        const rect = createNodeRectFromPoints(drag.startPoint, targetPoint, drag.tool, event.shiftKey, snapToGrid, gridSize)
+        createNodeInRect(rect, drag.tool, drag.startPoint)
+      }
+      return
+    }
     if (drag.kind === 'selection-box') {
       const box = rectFromPoints(drag.startPoint, drag.pointer)
       if (box.width < 3 && box.height < 3 && !drag.additive) emitSelection({ nodeIds: [], edgeIds: [] })
@@ -1867,7 +1924,7 @@ ${nodeMarkup}
       return
     }
     setPendingConnectorAnchor({ nodeId: drag.fromNodeId, ...drag.fromAnchor, toEnd: drag.toEnd })
-  }, [connectorAnchorAtPoint, createEdgeBetween, createFreeEdge, pointFromEvent])
+  }, [connectorAnchorAtPoint, createEdgeBetween, createFreeEdge, createNodeAt, createNodeInRect, gridSize, pointFromEvent, snapToGrid])
   const undo = useCallback(() => {
     const previous = undoStackRef.current.pop()
     if (!previous) return false
@@ -2382,6 +2439,9 @@ ${nodeMarkup}
 
   const connectorPreview = dragRef.current?.kind === 'connector' ? dragRef.current : null
   const freeEdgePreview = dragRef.current?.kind === 'free-edge' ? dragRef.current : null
+  const createNodePreview = dragRef.current?.kind === 'create-node' ? dragRef.current : null
+  const createNodePreviewRect = createNodePreview ? createNodeRectFromPoints(createNodePreview.startPoint, createNodePreview.pointer, createNodePreview.tool, createNodePreview.shiftKey, false, gridSize) : null
+  const createNodePreviewShape = createNodePreview ? shapeForTool(createNodePreview.tool) : null
   const selectionBox = dragRef.current?.kind === 'selection-box' ? rectFromPoints(dragRef.current.startPoint, dragRef.current.pointer) : null
   const activeGroup = activeGroupId ? nodeById.get(activeGroupId) : null
   const worldStyle: CSSProperties = {
@@ -2590,6 +2650,22 @@ ${nodeMarkup}
             </div>
           )
         })}
+
+        {createNodePreviewRect && createNodePreviewShape ? (() => {
+          const polygonPath = polygonShapePath(createNodePreviewShape)
+          return (
+            <div
+              className={`minucanvas-node minucanvas-node--type-text ${nodeShapeClass({ shape: createNodePreviewShape } as CanvasNode)} minucanvas-node--creating`}
+              style={{ left: createNodePreviewRect.x, top: createNodePreviewRect.y, width: createNodePreviewRect.width, height: createNodePreviewRect.height }}
+            >
+              {polygonPath ? (
+                <svg className="minucanvas-node__shape" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                  <path d={polygonPath} />
+                </svg>
+              ) : null}
+            </div>
+          )
+        })() : null}
 
         {value.nodes.map((node) => {
           const selected = selection.nodeIds.includes(node.id)

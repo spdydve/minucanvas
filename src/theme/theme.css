@@ -308,6 +308,11 @@
   touch-action: none;
 }
 
+.minucanvas-node--creating {
+  opacity: 0.82;
+  pointer-events: none;
+}
+
 .minucanvas-node::before {
   content: "";
   position: absolute;
