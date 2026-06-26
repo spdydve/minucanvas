@@ -188,6 +188,7 @@ Text-note nodes automatically resize to fit their text plus padding when edited.
 - Select nodes or edges to use the style toolbar for shape, stroke/fill/text colors, stroke style, width, font size/alignment, and edge routing.
 - Elbow connectors render with rounded corners. Select an elbow connector and drag a horizontal or vertical segment to customize its route.
 - Arrow and line tools can also draw free-standing marks when dragged on empty canvas space. Start from a node outline to create a connector; start on empty canvas to create an unconnected line/arrow. Hold `Shift` while drawing to snap to 15° increments for clean horizontal, vertical, and diagonal lines.
+- Select a line/arrow to drag endpoint handles. Dropping an endpoint near a shape connects it; dragging it away from shapes detaches it to a free point. Hold `Shift` while dragging a free endpoint to snap the line angle.
 
 ## Text, links, and images
 

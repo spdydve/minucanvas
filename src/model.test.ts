@@ -39,7 +39,7 @@ describe('canvas model helpers', () => {
     expect(duplicated.selection.edgeIds).toHaveLength(1)
   })
 
-  it('creates free-standing line and arrow edges with points', () => {
+  it('creates free-standing and hybrid line edges with points', () => {
     const edge = createCanvasEdge('', '', {
       id: 'free-arrow',
       fromPoint: { x: 10, y: 20 },
@@ -51,6 +51,15 @@ describe('canvas model helpers', () => {
     expect(edge.fromPoint).toEqual({ x: 10, y: 20 })
     expect(edge.toPoint).toEqual({ x: 110, y: 80 })
     expect(edge.toEnd).toBe('arrow')
+
+    const hybrid = createCanvasEdge('node-a', '', {
+      id: 'hybrid-line',
+      toPoint: { x: 220, y: 40 },
+      toEnd: 'none',
+    })
+    expect(hybrid.fromNode).toBe('node-a')
+    expect(hybrid.toNode).toBe('')
+    expect(hybrid.toPoint).toEqual({ x: 220, y: 40 })
   })
 
   it('creates default flow nodes with a compact height', () => {

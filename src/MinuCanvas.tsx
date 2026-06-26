@@ -14,7 +14,7 @@ import {
   type PointerEvent,
   type ReactElement,
 } from 'react'
-import { anchorForEdgeAnchor, canvasBounds, clientToCanvas, defaultEdgeAnchorForSide, defaultEdgeConnection, edgeAnchorForPoint, edgeLabelPoint, edgePath, edgeRoutePoints, moveOrthogonalRouteSegment, sideForPoint, type Point } from './geometry'
+import { anchorForEdgeAnchor, canvasBounds, clientToCanvas, defaultEdgeAnchorForSide, defaultEdgeConnection, edgeAnchorForPoint, edgeLabelPoint, edgePath, edgeRoutePoints, moveOrthogonalRouteSegment, nodeCenter, sideForPoint, type Point } from './geometry'
 import { layoutMindMap } from './mindmap'
 import {
   alignSelection as alignSelectionInDocument,
@@ -389,10 +389,6 @@ function connectorEndForTool(tool: CanvasTool): 'none' | 'arrow' {
   return tool === 'arrow' ? 'arrow' : 'none'
 }
 
-function isFreeEdge(edge: CanvasEdge): edge is CanvasEdge & { fromPoint: Point; toPoint: Point } {
-  return Boolean(edge.fromPoint && edge.toPoint)
-}
-
 function freeEdgePath(start: Point, end: Point): string {
   return `M ${start.x} ${start.y} L ${end.x} ${end.y}`
 }
@@ -411,14 +407,38 @@ function snapPointToAngle(start: Point, point: Point, stepDegrees = 15): Point {
   }
 }
 
-function freeEdgeLabelPoint(edge: Pick<CanvasEdge, 'fromPoint' | 'toPoint'>): Point | null {
-  if (!edge.fromPoint || !edge.toPoint) return null
-  return { x: (edge.fromPoint.x + edge.toPoint.x) / 2, y: (edge.fromPoint.y + edge.toPoint.y) / 2 }
+function edgeEndpointPoint(edge: CanvasEdge, endpoint: 'from' | 'to', node: CanvasNode | undefined, otherPoint: Point | null): Point | null {
+  const freePoint = endpoint === 'from' ? edge.fromPoint : edge.toPoint
+  if (freePoint) return freePoint
+  if (!node) return null
+  const anchor = endpoint === 'from' ? edge.fromAnchor : edge.toAnchor
+  const side = anchor?.side ?? (endpoint === 'from' ? edge.fromSide : edge.toSide) ?? (otherPoint ? sideForPoint(node, otherPoint) : 'right')
+  return anchorForEdgeAnchor(node, anchor ?? defaultEdgeAnchorForSide(node, side))
+}
+
+function edgeRenderPoints(edge: CanvasEdge, fromNode: CanvasNode | undefined, toNode: CanvasNode | undefined): { from: Point; to: Point } | null {
+  const fromReference = edge.toPoint ?? (toNode ? nodeCenter(toNode) : null)
+  const from = edgeEndpointPoint(edge, 'from', fromNode, fromReference)
+  const toReference = from ?? edge.fromPoint ?? (fromNode ? nodeCenter(fromNode) : null)
+  const to = edgeEndpointPoint(edge, 'to', toNode, toReference)
+  return from && to ? { from, to } : null
+}
+
+function renderedEdgePath(edge: CanvasEdge, fromNode: CanvasNode | undefined, toNode: CanvasNode | undefined): string | null {
+  if (!edge.fromPoint && !edge.toPoint && fromNode && toNode) return edgePath(edge, fromNode, toNode)
+  const points = edgeRenderPoints(edge, fromNode, toNode)
+  return points ? freeEdgePath(points.from, points.to) : null
+}
+
+function renderedEdgeLabelPoint(edge: CanvasEdge, fromNode: CanvasNode | undefined, toNode: CanvasNode | undefined): Point | null {
+  if (!edge.fromPoint && !edge.toPoint && fromNode && toNode) return edgeLabelPoint(edge, fromNode, toNode)
+  const points = edgeRenderPoints(edge, fromNode, toNode)
+  return points ? { x: (points.from.x + points.to.x) / 2, y: (points.from.y + points.to.y) / 2 } : null
 }
 
 function documentBoundsWithFreeEdges(document: JsonCanvasDocument, padding = 80): { x: number; y: number; width: number; height: number } {
   const base = canvasBounds(document.nodes, padding)
-  const points = document.edges.flatMap((edge) => isFreeEdge(edge) ? [edge.fromPoint, edge.toPoint] : [])
+  const points = document.edges.flatMap((edge) => [edge.fromPoint, edge.toPoint].filter((point): point is Point => Boolean(point)))
   if (points.length === 0) return base
   const minX = Math.min(base.x, ...points.map((point) => point.x - padding))
   const minY = Math.min(base.y, ...points.map((point) => point.y - padding))
@@ -1045,10 +1065,9 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
 
     const selectedEdge = selection.edgeIds.length === 1 ? value.edges.find((edge) => edge.id === selection.edgeIds[0]) : null
     if (selectedEdge) {
-      if (isFreeEdge(selectedEdge)) return freeEdgeLabelPoint(selectedEdge)
       const fromNode = nodeById.get(selectedEdge.fromNode)
       const toNode = nodeById.get(selectedEdge.toNode)
-      if (fromNode && toNode) return edgeLabelPoint(selectedEdge, fromNode, toNode)
+      return renderedEdgeLabelPoint(selectedEdge, fromNode, toNode)
     }
 
     return null
@@ -1124,11 +1143,10 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
         ...(includeEdges
           ? value.edges.flatMap((edge) => {
               if (selection.edgeIds.includes(edge.id)) return []
-              if (isFreeEdge(edge)) return [{ kind: 'edge' as const, id: edge.id, point: freeEdgeLabelPoint(edge)! }]
               const fromNode = nodeById.get(edge.fromNode)
               const toNode = nodeById.get(edge.toNode)
-              if (!fromNode || !toNode) return []
-              return [{ kind: 'edge' as const, id: edge.id, point: edgeLabelPoint(edge, fromNode, toNode) }]
+              const point = renderedEdgeLabelPoint(edge, fromNode, toNode)
+              return point ? [{ kind: 'edge' as const, id: edge.id, point }] : []
             })
           : []),
       ]
@@ -1270,27 +1288,37 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
     [value.nodes, viewport.zoom],
   )
 
-  const updateEdgeAnchor = useCallback(
-    (edgeId: string, endpoint: 'from' | 'to', node: CanvasNode<NodeExtra>, anchor: CanvasEdgeAnchor) => {
+  const updateEdgeEndpoint = useCallback(
+    (edgeId: string, endpoint: 'from' | 'to', target: { node: CanvasNode<NodeExtra>; anchor: CanvasEdgeAnchor } | { point: Point }) => {
       if (readOnly) return
       const nextEdges = value.edges.map((edge) => {
         if (edge.id !== edgeId) return edge
-        if (endpoint === 'from') {
-          if (edge.toNode === node.id) return edge
-          return {
-            ...edge,
-            fromNode: node.id,
-            fromSide: anchor.side,
-            fromAnchor: anchor,
+        if ('node' in target) {
+          if (endpoint === 'from') {
+            if (edge.toNode === target.node.id) return edge
+            const { fromPoint: _fromPoint, ...rest } = edge
+            return {
+              ...rest,
+              fromNode: target.node.id,
+              fromSide: target.anchor.side,
+              fromAnchor: target.anchor,
+            } as CanvasEdge<EdgeExtra>
           }
+          if (edge.fromNode === target.node.id) return edge
+          const { toPoint: _toPoint, ...rest } = edge
+          return {
+            ...rest,
+            toNode: target.node.id,
+            toSide: target.anchor.side,
+            toAnchor: target.anchor,
+          } as CanvasEdge<EdgeExtra>
         }
-        if (edge.fromNode === node.id) return edge
-        return {
-          ...edge,
-          toNode: node.id,
-          toSide: anchor.side,
-          toAnchor: anchor,
+        if (endpoint === 'from') {
+          const { fromAnchor: _fromAnchor, fromSide: _fromSide, ...rest } = edge
+          return { ...rest, fromNode: '', fromPoint: target.point } as CanvasEdge<EdgeExtra>
         }
+        const { toAnchor: _toAnchor, toSide: _toSide, ...rest } = edge
+        return { ...rest, toNode: '', toPoint: target.point } as CanvasEdge<EdgeExtra>
       })
       emitChange({ ...value, edges: nextEdges }, 'update-edge')
     },
@@ -1407,13 +1435,13 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
     const edgeMarkup = exportDocument.edges.map((edge) => {
       const fromNode = nodes.get(edge.fromNode)
       const toNode = nodes.get(edge.toNode)
-      if (!isFreeEdge(edge) && (!fromNode || !toNode)) return ''
-      const path = isFreeEdge(edge) ? freeEdgePath(edge.fromPoint, edge.toPoint) : edgePath(edge, fromNode!, toNode!)
+      const path = renderedEdgePath(edge, fromNode, toNode)
+      if (!path) return ''
       const stroke = edge.style?.stroke ?? edge.color ?? defaultColor
       const strokeWidth = edge.style?.strokeWidth ?? 1.5
       const dash = edgeDash(edge) ? ` stroke-dasharray="${edgeDash(edge)}"` : ''
       const marker = (edge.toEnd ?? 'arrow') === 'arrow' ? ` marker-end="url(#arrow-${escapeXml(edge.id)})"` : ''
-      const labelPoint = edge.label ? (isFreeEdge(edge) ? freeEdgeLabelPoint(edge) : edgeLabelPoint(edge, fromNode!, toNode!)) : null
+      const labelPoint = edge.label ? renderedEdgeLabelPoint(edge, fromNode, toNode) : null
       const label = edge.label && labelPoint
         ? svgText(edge.label, labelPoint.x, labelPoint.y, { color: defaultColor, fontSize: 12, fontWeight: 500, textAnchor: 'middle' })
         : ''
@@ -1766,7 +1794,15 @@ ${nodeMarkup}
     if (drag.kind === 'edge-anchor') {
       const hit = connectorAnchorAtPoint(point)
       if (hit) {
-        updateEdgeAnchor(drag.edgeId, drag.endpoint, hit.node, hit.anchor)
+        updateEdgeEndpoint(drag.edgeId, drag.endpoint, { node: hit.node, anchor: hit.anchor })
+      } else {
+        const edge = value.edges.find((item) => item.id === drag.edgeId)
+        const fromNode = edge ? nodeById.get(edge.fromNode) : undefined
+        const toNode = edge ? nodeById.get(edge.toNode) : undefined
+        const points = edge ? edgeRenderPoints(edge, fromNode, toNode) : null
+        const otherPoint = drag.endpoint === 'from' ? points?.to : points?.from
+        const target = event.shiftKey && otherPoint ? snapPointToAngle(otherPoint, point) : point
+        updateEdgeEndpoint(drag.edgeId, drag.endpoint, { point: target })
       }
       return
     }
@@ -1790,15 +1826,10 @@ ${nodeMarkup}
           return [node.groupId ?? node.id]
         }))]
       const boxEdgeIds = value.edges.filter((edge) => {
-        if (isFreeEdge(edge)) return rectsOverlap(box, rectFromLine(edge.fromPoint, edge.toPoint, 10))
         const fromNode = nodeById.get(edge.fromNode)
         const toNode = nodeById.get(edge.toNode)
-        if (!fromNode || !toNode) return false
-        const fromSide = edge.fromSide ?? sideForPoint(fromNode, { x: toNode.x + toNode.width / 2, y: toNode.y + toNode.height / 2 })
-        const toSide = edge.toSide ?? sideForPoint(toNode, { x: fromNode.x + fromNode.width / 2, y: fromNode.y + fromNode.height / 2 })
-        const fromPoint = anchorForEdgeAnchor(fromNode, edge.fromAnchor ?? defaultEdgeAnchorForSide(fromNode, fromSide))
-        const toPoint = anchorForEdgeAnchor(toNode, edge.toAnchor ?? defaultEdgeAnchorForSide(toNode, toSide))
-        return rectsOverlap(box, rectFromLine(fromPoint, toPoint, 10))
+        const points = edgeRenderPoints(edge, fromNode, toNode)
+        return points ? rectsOverlap(box, rectFromLine(points.from, points.to, 10)) : false
       }).map((edge) => edge.id)
       emitSelection({
         nodeIds: nextDrag.additive ? [...new Set([...nextDrag.originalSelection.nodeIds, ...boxNodeIds])] : boxNodeIds,
@@ -1877,7 +1908,7 @@ ${nodeMarkup}
     const movedSet = new Set(drag.nodeIds)
     const changedGroups = new Set(moved.nodes.flatMap((node) => node.groupId && movedSet.has(node.id) && !movedSet.has(node.groupId) ? [node.groupId] : []))
     emitChange(recenterMovedNodeEdges(fitGroupsToChildren(moved, changedGroups), drag.nodeIds), 'move-node')
-  }, [activeGroupId, connectorAnchorAtPoint, emitChange, gridSize, nodeById, pointFromEvent, setViewport, snapToGrid, updateEdgeAnchor, updateEdgeSegment, value, viewport.zoom])
+  }, [activeGroupId, connectorAnchorAtPoint, emitChange, gridSize, nodeById, pointFromEvent, setViewport, snapToGrid, updateEdgeEndpoint, updateEdgeSegment, value, viewport.zoom])
 
   const handlePointerUp = useCallback((event: PointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current
@@ -2498,9 +2529,9 @@ ${nodeMarkup}
           {value.edges.map((edge) => {
             const fromNode = nodeById.get(edge.fromNode)
             const toNode = nodeById.get(edge.toNode)
-            if (!isFreeEdge(edge) && (!fromNode || !toNode)) return null
+            const path = renderedEdgePath(edge, fromNode, toNode)
+            if (!path) return null
             const selected = selection.edgeIds.includes(edge.id)
-            const path = isFreeEdge(edge) ? freeEdgePath(edge.fromPoint, edge.toPoint) : edgePath(edge, fromNode!, toNode!)
             const strokeStyle = edge.style?.strokeStyle
             return (
               <g key={edge.id} className={`minucanvas-edge${selected ? ' minucanvas-edge--selected' : ''}${strokeStyle === 'sketch' ? ' minucanvas-edge--sketch' : ''}`}>
@@ -2553,13 +2584,10 @@ ${nodeMarkup}
             if (!selection.edgeIds.includes(edge.id)) return null
             const fromNode = nodeById.get(edge.fromNode)
             const toNode = nodeById.get(edge.toNode)
-            if (!fromNode || !toNode) return null
-            const fromSide = edge.fromSide ?? sideForPoint(fromNode, { x: toNode.x + toNode.width / 2, y: toNode.y + toNode.height / 2 })
-            const toSide = edge.toSide ?? sideForPoint(toNode, { x: fromNode.x + fromNode.width / 2, y: fromNode.y + fromNode.height / 2 })
-            const fromAnchor = edge.fromAnchor ?? defaultEdgeAnchorForSide(fromNode, fromSide)
-            const toAnchor = edge.toAnchor ?? defaultEdgeAnchorForSide(toNode, toSide)
-            const fromPoint = anchorForEdgeAnchor(fromNode, fromAnchor)
-            const toPoint = anchorForEdgeAnchor(toNode, toAnchor)
+            const points = edgeRenderPoints(edge, fromNode, toNode)
+            if (!points) return null
+            const fromPoint = points.from
+            const toPoint = points.to
             return (
               <g key={`${edge.id}-handles`} className="minucanvas-edge-handles">
                 <circle
@@ -2599,9 +2627,8 @@ ${nodeMarkup}
           const fromNode = nodeById.get(edge.fromNode)
           const toNode = nodeById.get(edge.toNode)
           const editingEdge = editingEdgeId === edge.id
-          if (!isFreeEdge(edge) && (!fromNode || !toNode)) return null
           if (!edge.label && !editingEdge) return null
-          const point = isFreeEdge(edge) ? freeEdgeLabelPoint(edge) : edgeLabelPoint(edge, fromNode!, toNode!)
+          const point = renderedEdgeLabelPoint(edge, fromNode, toNode)
           if (!point) return null
           return (
             <div
@@ -2885,14 +2912,11 @@ ${nodeMarkup}
             if (!selection.edgeIds.includes(edge.id)) return null
             const fromNode = nodeById.get(edge.fromNode)
             const toNode = nodeById.get(edge.toNode)
-            if (!fromNode || !toNode) return null
-            const fromSide = edge.fromSide ?? sideForPoint(fromNode, { x: toNode.x + toNode.width / 2, y: toNode.y + toNode.height / 2 })
-            const toSide = edge.toSide ?? sideForPoint(toNode, { x: fromNode.x + fromNode.width / 2, y: fromNode.y + fromNode.height / 2 })
-            const fromAnchor = edge.fromAnchor ?? defaultEdgeAnchorForSide(fromNode, fromSide)
-            const toAnchor = edge.toAnchor ?? defaultEdgeAnchorForSide(toNode, toSide)
-            const fromPoint = anchorForEdgeAnchor(fromNode, fromAnchor)
-            const toPoint = anchorForEdgeAnchor(toNode, toAnchor)
-            const routePoints = edgeRoutePoints(edge, fromNode, toNode)
+            const points = edgeRenderPoints(edge, fromNode, toNode)
+            if (!points) return null
+            const fromPoint = points.from
+            const toPoint = points.to
+            const routePoints = !edge.fromPoint && !edge.toPoint && fromNode && toNode ? edgeRoutePoints(edge, fromNode, toNode) : []
             return (
               <g key={`${edge.id}-overlay-handles`} className="minucanvas-edge-handles">
                 {routePoints.slice(0, -1).map((routePoint, index) => {
