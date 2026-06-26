@@ -545,9 +545,34 @@
   white-space: nowrap;
 }
 
+.minucanvas-node--type-group:not(.minucanvas-node--frame) .minucanvas-node__content {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.minucanvas-node--type-group:not(.minucanvas-node--frame).minucanvas-node--selected .minucanvas-node__content,
+.minucanvas-node--type-group:not(.minucanvas-node--frame).minucanvas-node--active-group .minucanvas-node__content,
+.minucanvas-node--type-group:not(.minucanvas-node--frame).minucanvas-node--editing .minucanvas-node__content {
+  opacity: 1;
+}
+
 .minucanvas-node--type-group::before {
-  background: color-mix(in srgb, var(--mc-node-fill, var(--mc-shape-fill)) 52%, transparent);
+  background: transparent;
+  border-color: transparent;
   border-style: dashed;
+  box-shadow: none;
+}
+
+.minucanvas-node--type-group.minucanvas-node--selected::before,
+.minucanvas-node--type-group.minucanvas-node--active-group::before,
+.minucanvas-node--type-group.minucanvas-node--editing::before {
+  border-color: var(--mc-node-selected, var(--mc-shape-selected));
+  background: color-mix(in srgb, var(--mc-canvas-accent-soft) 36%, transparent);
+}
+
+.minucanvas-node--frame .minucanvas-node__content {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .minucanvas-node--frame::before {

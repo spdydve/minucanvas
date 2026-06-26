@@ -136,7 +136,7 @@ Frames use the same container primitive with `type: 'group'` and `frame: true`:
 }
 ```
 
-Frames are intentionally frame-like groups for now: they provide a visible organization/export region while reusing group movement, resizing, child membership, and edit-mode behavior.
+Frames are intentionally frame-like groups for now: they provide a visible organization/export region while reusing group movement, resizing, child membership, and edit-mode behavior. Plain groups are treated as transform relationships and are visually de-emphasized unless selected, active, or editing.
 
 ### Images
 

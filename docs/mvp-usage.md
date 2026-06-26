@@ -247,8 +247,8 @@ Warnings can be handled with:
 
 ## Groups and frames
 
-- Group: select two or more shapes and use `Cmd/Ctrl+G` or context menu `Group selection`.
-- Frame: select two or more shapes and use context menu `Frame selection`. Frames currently reuse group behavior with a more frame-like visual style.
+- Group: select two or more shapes and use `Cmd/Ctrl+G` or context menu `Group selection`. Groups are primarily a transform relationship; their wrapper/label is only emphasized when selected, active, or editing.
+- Frame: select two or more shapes and use context menu `Frame selection`. Frames reuse group mechanics but remain visible as organization/export regions with a persistent title and border.
 - Rename a group/frame: select it and press `Enter`/`F2`, double-click its label, or use context menu `Rename frame/group`.
 - Ungroup: `Cmd/Ctrl+Shift+G` or context menu `Ungroup`.
 - Click a grouped child to select/move the group.
