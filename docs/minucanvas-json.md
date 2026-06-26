@@ -161,12 +161,25 @@ type CanvasEdge = {
   label?: string
   color?: string
 }
+
+For a free-standing line/arrow that is not connected to nodes, MinuCanvas can store point endpoints instead:
+
+```ts
+type FreeCanvasEdge = CanvasEdge & {
+  fromNode: ''
+  toNode: ''
+  fromPoint: { x: number; y: number }
+  toPoint: { x: number; y: number }
+}
+```
 ```
 
 ### MinuCanvas edge extensions
 
 ```ts
 type CanvasEdge = {
+  fromPoint?: { x: number; y: number }
+  toPoint?: { x: number; y: number }
   fromAnchor?: CanvasEdgeAnchor
   toAnchor?: CanvasEdgeAnchor
   fromEnd?: 'none' | 'arrow'
@@ -175,6 +188,8 @@ type CanvasEdge = {
   waypoints?: Array<{ x: number; y: number }>
 }
 ```
+
+`fromPoint` and `toPoint` are optional free-standing endpoints for lines/arrows that are drawn directly on the canvas instead of attached to nodes.
 
 `waypoints` are optional editable route points in canvas coordinates. When present, the edge renders through those points between the start and end anchors.
 

@@ -86,6 +86,12 @@ type DragState<NodeExtra extends Record<string, unknown>> =
       pointer: Point
     }
   | {
+      kind: 'free-edge'
+      startPoint: Point
+      pointer: Point
+      toEnd: 'none' | 'arrow'
+    }
+  | {
       kind: 'edge-anchor'
       edgeId: string
       endpoint: 'from' | 'to'
@@ -374,6 +380,30 @@ function isConnectorTool(tool: CanvasTool): boolean {
 
 function connectorEndForTool(tool: CanvasTool): 'none' | 'arrow' {
   return tool === 'arrow' ? 'arrow' : 'none'
+}
+
+function isFreeEdge(edge: CanvasEdge): edge is CanvasEdge & { fromPoint: Point; toPoint: Point } {
+  return Boolean(edge.fromPoint && edge.toPoint)
+}
+
+function freeEdgePath(start: Point, end: Point): string {
+  return `M ${start.x} ${start.y} L ${end.x} ${end.y}`
+}
+
+function freeEdgeLabelPoint(edge: Pick<CanvasEdge, 'fromPoint' | 'toPoint'>): Point | null {
+  if (!edge.fromPoint || !edge.toPoint) return null
+  return { x: (edge.fromPoint.x + edge.toPoint.x) / 2, y: (edge.fromPoint.y + edge.toPoint.y) / 2 }
+}
+
+function documentBoundsWithFreeEdges(document: JsonCanvasDocument, padding = 80): { x: number; y: number; width: number; height: number } {
+  const base = canvasBounds(document.nodes, padding)
+  const points = document.edges.flatMap((edge) => isFreeEdge(edge) ? [edge.fromPoint, edge.toPoint] : [])
+  if (points.length === 0) return base
+  const minX = Math.min(base.x, ...points.map((point) => point.x - padding))
+  const minY = Math.min(base.y, ...points.map((point) => point.y - padding))
+  const maxX = Math.max(base.x + base.width, ...points.map((point) => point.x + padding))
+  const maxY = Math.max(base.y + base.height, ...points.map((point) => point.y + padding))
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY }
 }
 
 function isNodeTool(tool: CanvasTool): boolean {
@@ -897,6 +927,22 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
     [emitChange, emitSelection, nodeById, readOnly, value],
   )
 
+  const createFreeEdge = useCallback((fromPoint: Point, toPoint: Point, toEnd: 'none' | 'arrow') => {
+    if (readOnly) return null
+    const edge = createCanvasEdge<EdgeExtra>('', '', {
+      id: createId(toEnd === 'arrow' ? 'arrow' : 'line'),
+      fromPoint,
+      toPoint,
+      fromEnd: 'none',
+      toEnd,
+      style: { routing: 'straight' },
+    } as Partial<CanvasEdge<EdgeExtra>>)
+    emitChange({ ...value, edges: [...value.edges, edge] }, 'create-edge')
+    emitSelection({ nodeIds: [], edgeIds: [edge.id] })
+    setActiveTool('select')
+    return edge
+  }, [emitChange, emitSelection, readOnly, setActiveTool, value])
+
   const createMindMapNode = useCallback((kind: 'child' | 'sibling', side?: 'left' | 'right', commit?: { nodeId: string; text: string }) => {
     if (readOnly || selection.nodeIds.length !== 1) return false
     const baseValue = commit ? documentWithCommittedNodeText(value, commit.nodeId, commit.text) : value
@@ -947,6 +993,7 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
 
     const selectedEdge = selection.edgeIds.length === 1 ? value.edges.find((edge) => edge.id === selection.edgeIds[0]) : null
     if (selectedEdge) {
+      if (isFreeEdge(selectedEdge)) return freeEdgeLabelPoint(selectedEdge)
       const fromNode = nodeById.get(selectedEdge.fromNode)
       const toNode = nodeById.get(selectedEdge.toNode)
       if (fromNode && toNode) return edgeLabelPoint(selectedEdge, fromNode, toNode)
@@ -1025,6 +1072,7 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
         ...(includeEdges
           ? value.edges.flatMap((edge) => {
               if (selection.edgeIds.includes(edge.id)) return []
+              if (isFreeEdge(edge)) return [{ kind: 'edge' as const, id: edge.id, point: freeEdgeLabelPoint(edge)! }]
               const fromNode = nodeById.get(edge.fromNode)
               const toNode = nodeById.get(edge.toNode)
               if (!fromNode || !toNode) return []
@@ -1293,7 +1341,7 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
 
   const exportSvgWithOptions = useCallback((options: ExportOptions): string => {
     const exportDocument = exportDocumentForArea(options.area)
-    const bounds = canvasBounds(exportDocument.nodes, 80)
+    const bounds = documentBoundsWithFreeEdges(exportDocument, 80)
     const defaultColor = options.colorMode === 'dark' ? '#f4f4f5' : '#111827'
     const background = options.colorMode === 'dark' ? '#151515' : '#ffffff'
     const nodes = new Map(exportDocument.nodes.map((node) => [node.id, node]))
@@ -1307,13 +1355,13 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
     const edgeMarkup = exportDocument.edges.map((edge) => {
       const fromNode = nodes.get(edge.fromNode)
       const toNode = nodes.get(edge.toNode)
-      if (!fromNode || !toNode) return ''
-      const path = edgePath(edge, fromNode, toNode)
+      if (!isFreeEdge(edge) && (!fromNode || !toNode)) return ''
+      const path = isFreeEdge(edge) ? freeEdgePath(edge.fromPoint, edge.toPoint) : edgePath(edge, fromNode!, toNode!)
       const stroke = edge.style?.stroke ?? edge.color ?? defaultColor
       const strokeWidth = edge.style?.strokeWidth ?? 1.5
       const dash = edgeDash(edge) ? ` stroke-dasharray="${edgeDash(edge)}"` : ''
       const marker = (edge.toEnd ?? 'arrow') === 'arrow' ? ` marker-end="url(#arrow-${escapeXml(edge.id)})"` : ''
-      const labelPoint = edge.label ? edgeLabelPoint(edge, fromNode, toNode) : null
+      const labelPoint = edge.label ? (isFreeEdge(edge) ? freeEdgeLabelPoint(edge) : edgeLabelPoint(edge, fromNode!, toNode!)) : null
       const label = edge.label && labelPoint
         ? svgText(edge.label, labelPoint.x, labelPoint.y, { color: defaultColor, fontSize: 12, fontWeight: 500, textAnchor: 'middle' })
         : ''
@@ -1345,7 +1393,7 @@ ${nodeMarkup}
 
   const exportPngWithOptions = useCallback(async (options: ExportOptions): Promise<string> => {
     const svg = exportSvgWithOptions(options)
-    const bounds = canvasBounds(exportDocumentForArea(options.area).nodes, 80)
+    const bounds = documentBoundsWithFreeEdges(exportDocumentForArea(options.area), 80)
     const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     try {
@@ -1598,6 +1646,12 @@ ${nodeMarkup}
       }
 
       setPendingConnectorAnchor(null)
+      if (!readOnly) {
+        event.currentTarget.setPointerCapture(event.pointerId)
+        dragRef.current = { kind: 'free-edge', startPoint: point, pointer: point, toEnd: connectorEndForTool(activeTool) }
+        forcePointerFrame((frame) => frame + 1)
+        return
+      }
     }
 
     if (activeTool === 'select') {
@@ -1640,6 +1694,12 @@ ${nodeMarkup}
       return
     }
 
+    if (drag.kind === 'free-edge') {
+      dragRef.current = { ...drag, pointer: point }
+      forcePointerFrame((frame) => frame + 1)
+      return
+    }
+
     if (drag.kind === 'edge-anchor') {
       const hit = connectorAnchorAtPoint(point)
       if (hit) {
@@ -1667,6 +1727,7 @@ ${nodeMarkup}
           return [node.groupId ?? node.id]
         }))]
       const boxEdgeIds = value.edges.filter((edge) => {
+        if (isFreeEdge(edge)) return rectsOverlap(box, rectFromLine(edge.fromPoint, edge.toPoint, 10))
         const fromNode = nodeById.get(edge.fromNode)
         const toNode = nodeById.get(edge.toNode)
         if (!fromNode || !toNode) return false
@@ -1769,8 +1830,14 @@ ${nodeMarkup}
       return
     }
     if (drag.kind === 'edge-anchor') return
-    if (drag.kind !== 'connector') return
     const targetPoint = pointFromEvent(event)
+    if (drag.kind === 'free-edge') {
+      if (Math.hypot(targetPoint.x - drag.startPoint.x, targetPoint.y - drag.startPoint.y) > 4) {
+        createFreeEdge(drag.startPoint, targetPoint, drag.toEnd)
+      }
+      return
+    }
+    if (drag.kind !== 'connector') return
     const hit = connectorAnchorAtPoint(targetPoint, drag.fromNodeId)
     if (hit) {
       const edgePartial = {
@@ -1783,8 +1850,7 @@ ${nodeMarkup}
       return
     }
     setPendingConnectorAnchor({ nodeId: drag.fromNodeId, ...drag.fromAnchor, toEnd: drag.toEnd })
-  }, [connectorAnchorAtPoint, createEdgeBetween, pointFromEvent])
-
+  }, [connectorAnchorAtPoint, createEdgeBetween, createFreeEdge, pointFromEvent])
   const undo = useCallback(() => {
     const previous = undoStackRef.current.pop()
     if (!previous) return false
@@ -2298,6 +2364,7 @@ ${nodeMarkup}
   }, [emitChange, readOnly, value])
 
   const connectorPreview = dragRef.current?.kind === 'connector' ? dragRef.current : null
+  const freeEdgePreview = dragRef.current?.kind === 'free-edge' ? dragRef.current : null
   const selectionBox = dragRef.current?.kind === 'selection-box' ? rectFromPoints(dragRef.current.startPoint, dragRef.current.pointer) : null
   const activeGroup = activeGroupId ? nodeById.get(activeGroupId) : null
   const worldStyle: CSSProperties = {
@@ -2354,9 +2421,9 @@ ${nodeMarkup}
           {value.edges.map((edge) => {
             const fromNode = nodeById.get(edge.fromNode)
             const toNode = nodeById.get(edge.toNode)
-            if (!fromNode || !toNode) return null
+            if (!isFreeEdge(edge) && (!fromNode || !toNode)) return null
             const selected = selection.edgeIds.includes(edge.id)
-            const path = edgePath(edge, fromNode, toNode)
+            const path = isFreeEdge(edge) ? freeEdgePath(edge.fromPoint, edge.toPoint) : edgePath(edge, fromNode!, toNode!)
             const strokeStyle = edge.style?.strokeStyle
             return (
               <g key={edge.id} className={`minucanvas-edge${selected ? ' minucanvas-edge--selected' : ''}${strokeStyle === 'sketch' ? ' minucanvas-edge--sketch' : ''}`}>
@@ -2404,6 +2471,7 @@ ${nodeMarkup}
             const start = anchorForEdgeAnchor(fromNode, connectorPreview.fromAnchor)
             return <path className="minucanvas-edge__preview" d={`M ${start.x} ${start.y} L ${connectorPreview.pointer.x} ${connectorPreview.pointer.y}`} />
           })() : null}
+          {freeEdgePreview ? <path className="minucanvas-edge__preview" d={freeEdgePath(freeEdgePreview.startPoint, freeEdgePreview.pointer)} /> : null}
           {value.edges.map((edge) => {
             if (!selection.edgeIds.includes(edge.id)) return null
             const fromNode = nodeById.get(edge.fromNode)
@@ -2454,8 +2522,10 @@ ${nodeMarkup}
           const fromNode = nodeById.get(edge.fromNode)
           const toNode = nodeById.get(edge.toNode)
           const editingEdge = editingEdgeId === edge.id
-          if (!fromNode || !toNode || (!edge.label && !editingEdge)) return null
-          const point = edgeLabelPoint(edge, fromNode, toNode)
+          if (!isFreeEdge(edge) && (!fromNode || !toNode)) return null
+          if (!edge.label && !editingEdge) return null
+          const point = isFreeEdge(edge) ? freeEdgeLabelPoint(edge) : edgeLabelPoint(edge, fromNode!, toNode!)
+          if (!point) return null
           return (
             <div
               key={`${edge.id}-label`}

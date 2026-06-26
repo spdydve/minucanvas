@@ -93,7 +93,7 @@ Arrow and line tools are separate drawing tools, but both can function as connec
 
 `position` is `0..1` along the selected side and defaults to `0.5` when omitted. When dragging near the middle of a side, the anchor snaps to `0.5`; otherwise it keeps the chosen edge position so multiple arrows/lines can attach to the same shape without crowding one midpoint.
 
-With the arrow or line tool active, start drags from a shape outline/edge rather than the middle of the shape. Arrow creates an arrowhead; line creates a plain line. You can also start slightly outside the edge; the hit target resolves to the nearest outline point. Arrows/lines have an expanded invisible hit area, so selection and double-click label editing do not require pixel-perfect clicks. Select an arrow/line to reveal draggable start/end handles. Drag either handle to another point on a shape outline to reroute it. Double-click an arrow/line or its label to add/edit text.
+With the arrow or line tool active, start drags from a shape outline/edge rather than the middle of the shape to create a connector. Arrow creates an arrowhead; line creates a plain line. You can also start slightly outside the edge; the hit target resolves to the nearest outline point. Dragging on empty canvas space creates a free-standing line/arrow that is not connected to nodes. Arrows/lines have an expanded invisible hit area, so selection and double-click label editing do not require pixel-perfect clicks. Select a connected arrow/line to reveal draggable start/end handles. Drag either handle to another point on a shape outline to reroute it. Double-click an arrow/line or its label to add/edit text.
 
 ## Adding connected shapes
 

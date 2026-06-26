@@ -39,6 +39,20 @@ describe('canvas model helpers', () => {
     expect(duplicated.selection.edgeIds).toHaveLength(1)
   })
 
+  it('creates free-standing line and arrow edges with points', () => {
+    const edge = createCanvasEdge('', '', {
+      id: 'free-arrow',
+      fromPoint: { x: 10, y: 20 },
+      toPoint: { x: 110, y: 80 },
+      toEnd: 'arrow',
+      style: { routing: 'straight' },
+    })
+
+    expect(edge.fromPoint).toEqual({ x: 10, y: 20 })
+    expect(edge.toPoint).toEqual({ x: 110, y: 80 })
+    expect(edge.toEnd).toBe('arrow')
+  })
+
   it('creates default flow nodes with a compact height', () => {
     const node = createCanvasNode({ type: 'text', shape: 'rounded-rectangle' })
     expect(node.width).toBe(220)

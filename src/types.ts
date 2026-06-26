@@ -103,10 +103,14 @@ export type CanvasNode<NodeExtra extends Record<string, unknown> = Record<string
 export type CanvasEdge<EdgeExtra extends Record<string, unknown> = Record<string, unknown>> = EdgeExtra & {
   id: string
   fromNode: string
+  /** Free-standing edge start point. When present with `toPoint`, the edge does not need to be connected to nodes. */
+  fromPoint?: Point
   fromSide?: JsonCanvasSide
   fromAnchor?: CanvasEdgeAnchor
   fromEnd?: JsonCanvasEdgeEnd
   toNode: string
+  /** Free-standing edge end point. When present with `fromPoint`, the edge does not need to be connected to nodes. */
+  toPoint?: Point
   toSide?: JsonCanvasSide
   toAnchor?: CanvasEdgeAnchor
   toEnd?: JsonCanvasEdgeEnd
