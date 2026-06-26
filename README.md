@@ -195,7 +195,7 @@ The release script requires a clean worktree, verifies the tag does not already 
 
 ## Extensibility
 
-- Use groups and frame-like groups (`frame: true`) for organization/export regions.
+- Use groups and frame-like groups (`frame: true`) for organization/export regions; select a frame/group and press `Enter`/`F2` or use the context menu to rename it.
 - Add service-specific properties by typing `JsonCanvasDocument<NodeExtra, EdgeExtra>` or `MinuCanvasDocument<NodeExtra, EdgeExtra>`.
 - Use `renderNode` to render custom cards while keeping layout, selection, movement, and edge routing.
 - Use document profiles such as `mindMapCanvasProfile`, or define an app profile with `CanvasDocumentProfile`.

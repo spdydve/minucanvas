@@ -896,6 +896,12 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
 
   const selectedImageNode = useMemo(() => selection.nodeIds.map((id) => nodeById.get(id)).find((node) => node?.type === 'image') ?? null, [nodeById, selection.nodeIds])
   const selectedLinkNode = useMemo(() => selection.nodeIds.map((id) => nodeById.get(id)).find((node) => node?.type === 'link') ?? null, [nodeById, selection.nodeIds])
+  const selectedGroupNode = useMemo(() => selection.nodeIds.length === 1 ? nodeById.get(selection.nodeIds[0] ?? '') : null, [nodeById, selection.nodeIds])
+
+  const renameSelectedGroup = useCallback(() => {
+    if (readOnly || selectedGroupNode?.type !== 'group') return
+    setEditingNodeId(selectedGroupNode.id)
+  }, [readOnly, selectedGroupNode])
 
   const resizeSelectedImages = useCallback((scale: number) => {
     if (readOnly || selection.nodeIds.length === 0) return
@@ -3118,6 +3124,7 @@ ${nodeMarkup}
           <div className="minucanvas-context-menu__separator" />
           <button type="button" onClick={() => { groupCurrentSelection(); closeContextMenu() }} disabled={readOnly || selection.nodeIds.length < 2}><span>Group selection</span><kbd>⌘ G</kbd></button>
           <button type="button" onClick={() => { frameCurrentSelection(); closeContextMenu() }} disabled={readOnly || selection.nodeIds.length < 2}><span>Frame selection</span></button>
+          <button type="button" onClick={() => { renameSelectedGroup(); closeContextMenu() }} disabled={readOnly || selectedGroupNode?.type !== 'group'}><span>Rename {selectedGroupNode?.frame ? 'frame' : 'group'}</span><kbd>Enter</kbd></button>
           <button type="button" onClick={() => { ungroupCurrentSelection(); closeContextMenu() }} disabled={readOnly || selection.nodeIds.length === 0}><span>Ungroup</span><kbd>⇧⌘ G</kbd></button>
           <button type="button" onClick={() => { setSelectionLocked(true); closeContextMenu() }} disabled={readOnly || selection.nodeIds.length === 0}><span>Lock</span></button>
           <button type="button" onClick={() => { setSelectionLocked(false); closeContextMenu() }} disabled={readOnly || selection.nodeIds.length === 0}><span>Unlock</span></button>
