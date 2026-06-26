@@ -18,6 +18,10 @@ export function emptyCanvas<NodeExtra extends Record<string, unknown> = Record<s
   return { nodes: [], edges: [] }
 }
 
+export function createDefaultCanvasDocument<NodeExtra extends Record<string, unknown> = Record<string, unknown>, EdgeExtra extends Record<string, unknown> = Record<string, unknown>>(): JsonCanvasDocument<NodeExtra, EdgeExtra> {
+  return emptyCanvas<NodeExtra, EdgeExtra>()
+}
+
 export function cloneCanvas<NodeExtra extends Record<string, unknown>, EdgeExtra extends Record<string, unknown>>(
   document: JsonCanvasDocument<NodeExtra, EdgeExtra>,
 ): JsonCanvasDocument<NodeExtra, EdgeExtra> {

@@ -4,9 +4,11 @@ import { createCanvasEdge, createCanvasNode } from './model'
 import {
   applyCanvasDocumentProfileLayout,
   getCanvasDocumentProfile,
+  MIND_MAP_TOOLS,
   mindMapCanvasProfile,
   resolveCanvasInteractionMode,
   standardCanvasProfile,
+  toolsForCanvasProfile,
 } from './profiles'
 import type { JsonCanvasDocument } from './types'
 
@@ -19,9 +21,11 @@ describe('canvas document profiles', () => {
     expect(getCanvasDocumentProfile('custom')).toBeUndefined()
   })
 
-  it('resolves interaction mode from a profile with a canvas fallback', () => {
+  it('resolves interaction mode and toolbar tools from a profile with canvas fallbacks', () => {
     expect(resolveCanvasInteractionMode(mindMapCanvasProfile)).toBe('mindmap')
     expect(resolveCanvasInteractionMode(undefined)).toBe('canvas')
+    expect(toolsForCanvasProfile(mindMapCanvasProfile)).toBe(MIND_MAP_TOOLS)
+    expect(toolsForCanvasProfile(undefined)).toBe(standardCanvasProfile.toolbarTools)
   })
 
   it('creates a default mind map document with a compact text root', () => {

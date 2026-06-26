@@ -1,4 +1,4 @@
-import type { CanvasEdge, CanvasEdgeAnchor, CanvasEdgeStyle, CanvasNode, CanvasViewport, JsonCanvasSide } from './types'
+import type { CanvasEdge, CanvasEdgeAnchor, CanvasEdgeStyle, CanvasNode, CanvasViewport, JsonCanvasDocument, JsonCanvasSide } from './types'
 
 export interface Point {
   x: number
@@ -519,4 +519,19 @@ export function canvasBounds(nodes: readonly CanvasNode[], padding = 120): Rect 
   const maxX = Math.max(...nodes.map((node) => node.x + node.width)) + padding
   const maxY = Math.max(...nodes.map((node) => node.y + node.height)) + padding
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY }
+}
+
+export function centerViewportForDocument(
+  document: Pick<JsonCanvasDocument, 'nodes'>,
+  size: { width: number; height: number },
+  options: { zoom?: number; padding?: number } = {},
+): CanvasViewport {
+  const zoom = options.zoom ?? 1
+  if (document.nodes.length === 0) return { x: 0, y: 0, zoom }
+  const bounds = canvasBounds(document.nodes, options.padding ?? 0)
+  return {
+    zoom,
+    x: size.width / 2 - (bounds.x + bounds.width / 2) * zoom,
+    y: size.height / 2 - (bounds.y + bounds.height / 2) * zoom,
+  }
 }

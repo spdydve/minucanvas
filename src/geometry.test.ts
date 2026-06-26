@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { anchorForEdgeAnchor, defaultEdgeAnchorForSide, defaultEdgeConnection, edgeAnchorForPoint, edgeLabelPoint, edgePath, edgeRoutePoints, edgeWaypointHandlePoint, moveOrthogonalRouteSegment, roundedPolylinePath, sideForPoint } from './geometry'
+import { anchorForEdgeAnchor, centerViewportForDocument, defaultEdgeAnchorForSide, defaultEdgeConnection, edgeAnchorForPoint, edgeLabelPoint, edgePath, edgeRoutePoints, edgeWaypointHandlePoint, moveOrthogonalRouteSegment, roundedPolylinePath, sideForPoint } from './geometry'
 import { createCanvasNode } from './model'
 
 describe('connector anchor geometry', () => {
@@ -21,6 +21,11 @@ describe('connector anchor geometry', () => {
 
   it('resolves an edge anchor back to a point on the node outline', () => {
     expect(anchorForEdgeAnchor(node, { side: 'bottom', position: 0.25 })).toEqual({ x: 135, y: 340 })
+  })
+
+  it('centers a document in a viewport without changing zoom by default', () => {
+    const viewport = centerViewportForDocument({ nodes: [createCanvasNode({ id: 'root', x: 14, y: 62, width: 132, height: 36 })] }, { width: 800, height: 600 })
+    expect(viewport).toEqual({ x: 320, y: 220, zoom: 1 })
   })
 
   it('defaults diamond anchors to cardinal points', () => {

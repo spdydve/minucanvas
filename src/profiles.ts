@@ -1,18 +1,23 @@
 import { createDefaultMindMapDocument, layoutMindMap, type MindMapProfileOptions } from './mindmap'
-import { emptyCanvas } from './model'
-import type { AnyCanvasDocumentProfile, CanvasDocumentKind, CanvasDocumentProfile, CanvasInteractionMode, MinuCanvasDocument } from './types'
+import { createDefaultCanvasDocument } from './model'
+import type { AnyCanvasDocumentProfile, CanvasDocumentKind, CanvasDocumentProfile, CanvasInteractionMode, CanvasTool, MinuCanvasDocument } from './types'
+
+export const STANDARD_CANVAS_TOOLS: CanvasTool[] = ['select', 'hand', 'rectangle', 'diamond', 'ellipse', 'arrow', 'line', 'text', 'pill']
+export const MIND_MAP_TOOLS: CanvasTool[] = ['select', 'hand', 'text', 'arrow', 'line']
 
 export const standardCanvasProfile: CanvasDocumentProfile = {
   kind: 'canvas',
   label: 'Canvas',
   interactionMode: 'canvas',
-  createDefaultDocument: () => emptyCanvas(),
+  toolbarTools: STANDARD_CANVAS_TOOLS,
+  createDefaultDocument: () => createDefaultCanvasDocument(),
 }
 
 export const mindMapCanvasProfile: CanvasDocumentProfile<MindMapProfileOptions> = {
   kind: 'mindmap',
   label: 'Mind map',
   interactionMode: 'mindmap',
+  toolbarTools: MIND_MAP_TOOLS,
   createDefaultDocument: createDefaultMindMapDocument,
   layout: layoutMindMap,
 }
@@ -30,6 +35,10 @@ export function getCanvasDocumentProfile(kind: CanvasDocumentKind): AnyCanvasDoc
 
 export function resolveCanvasInteractionMode(profile?: Pick<AnyCanvasDocumentProfile, 'interactionMode'> | null, fallback: CanvasInteractionMode = 'canvas'): CanvasInteractionMode {
   return profile?.interactionMode ?? fallback
+}
+
+export function toolsForCanvasProfile(profile?: Pick<AnyCanvasDocumentProfile, 'toolbarTools'> | null, fallback: CanvasTool[] = STANDARD_CANVAS_TOOLS): CanvasTool[] {
+  return profile?.toolbarTools ?? fallback
 }
 
 export function applyCanvasDocumentProfileLayout<Options, NodeExtra extends Record<string, unknown> = Record<string, unknown>, EdgeExtra extends Record<string, unknown> = Record<string, unknown>>(

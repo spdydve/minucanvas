@@ -207,6 +207,7 @@ export interface CanvasDocumentProfile<Options = unknown, NodeExtra extends Reco
   kind: CanvasDocumentKind
   label: string
   interactionMode?: CanvasInteractionMode
+  toolbarTools?: CanvasTool[]
   createDefaultDocument?: (options?: Options) => MinuCanvasDocument<NodeExtra, EdgeExtra>
   layout?: (document: MinuCanvasDocument<NodeExtra, EdgeExtra>, options?: Options) => MinuCanvasDocument<NodeExtra, EdgeExtra>
 }

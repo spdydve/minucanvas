@@ -14,6 +14,7 @@ export {
   deleteSelection,
   distributeSelection,
   duplicateSelection,
+  createDefaultCanvasDocument,
   emptyCanvas,
   frameSelection,
   groupSelection,
@@ -31,6 +32,7 @@ export {
   anchorForSide,
   autoSidePair,
   canvasBounds,
+  centerViewportForDocument,
   clientToCanvas,
   defaultEdgeAnchorForSide,
   defaultEdgeConnection,
@@ -49,9 +51,12 @@ export {
   applyCanvasDocumentProfileLayout,
   builtInCanvasDocumentProfiles,
   getCanvasDocumentProfile,
+  MIND_MAP_TOOLS,
+  STANDARD_CANVAS_TOOLS,
   mindMapCanvasProfile,
   resolveCanvasInteractionMode,
   standardCanvasProfile,
+  toolsForCanvasProfile,
 } from './profiles'
 export { defaultCanvasShortcuts, toolFromKey } from './shortcuts'
 export { compileMinuDiagramSyntax, compileParsedMinuDiagram, parseMinuDiagramSyntax } from './syntax'
