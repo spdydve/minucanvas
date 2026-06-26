@@ -51,6 +51,7 @@ type CanvasNode = {
   shape?: CanvasShape
   style?: CanvasNodeStyle
   groupId?: string
+  frame?: boolean
   locked?: boolean
   imageWidth?: number
   imageHeight?: number
@@ -103,7 +104,7 @@ type CanvasNodeStyle = {
 }
 ```
 
-### Groups
+### Groups and frames
 
 Groups are represented as normal nodes with `type: 'group'`.
 
@@ -123,6 +124,19 @@ Group behavior:
 - Double-clicking a group enters group editing.
 - Group bounds can auto-fit around children.
 - Group labels render above-left of the group box.
+
+Frames use the same container primitive with `type: 'group'` and `frame: true`:
+
+```json
+{
+  "id": "frame-1",
+  "type": "group",
+  "frame": true,
+  "label": "Frame"
+}
+```
+
+Frames are intentionally frame-like groups for now: they provide a visible organization/export region while reusing group movement, resizing, child membership, and edit-mode behavior.
 
 ### Images
 

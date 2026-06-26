@@ -67,6 +67,7 @@ export function createCanvasNode<NodeExtra extends Record<string, unknown> = Rec
     shape,
     style: partial.style,
     groupId: partial.groupId,
+    frame: partial.frame,
     locked: partial.locked,
     imageWidth: partial.imageWidth,
     imageHeight: partial.imageHeight,
@@ -184,23 +185,25 @@ function nodeBounds(nodes: Array<Pick<CanvasNode, 'x' | 'y' | 'width' | 'height'
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY }
 }
 
-export function groupSelection<NodeExtra extends Record<string, unknown>, EdgeExtra extends Record<string, unknown>>(
+function createGroupLikeSelection<NodeExtra extends Record<string, unknown>, EdgeExtra extends Record<string, unknown>>(
   document: JsonCanvasDocument<NodeExtra, EdgeExtra>,
   selection: CanvasSelection,
+  options: { frame?: boolean } = {},
 ): { document: JsonCanvasDocument<NodeExtra, EdgeExtra>; selection: CanvasSelection; group: CanvasNode<NodeExtra> | null } {
   const nodes = selectedNodes(document, selection).filter((node) => node.type !== 'group')
   if (nodes.length < 2) return { document, selection, group: null }
   const bounds = nodeBounds(nodes)
-  const padding = 32
+  const padding = options.frame ? 48 : 32
   const group = createCanvasNode<NodeExtra>({
-    id: createId('group'),
+    id: createId(options.frame ? 'frame' : 'group'),
     type: 'group',
+    frame: options.frame,
     x: bounds.x - padding,
     y: bounds.y - padding,
     width: bounds.width + padding * 2,
     height: bounds.height + padding * 2,
-    label: 'Group',
-    style: { strokeStyle: 'dashed', opacity: 0.72 },
+    label: options.frame ? 'Frame' : 'Group',
+    style: options.frame ? { strokeWidth: 1.5, opacity: 0.78 } : { strokeStyle: 'dashed', opacity: 0.72 },
   } as Partial<CanvasNode<NodeExtra>>)
   const firstSelectedIndex = document.nodes.findIndex((node) => selection.nodeIds.includes(node.id))
   const nextNodes = document.nodes.map((node) => (
@@ -214,6 +217,20 @@ export function groupSelection<NodeExtra extends Record<string, unknown>, EdgeEx
     selection: { nodeIds: [group.id], edgeIds: [] },
     group,
   }
+}
+
+export function groupSelection<NodeExtra extends Record<string, unknown>, EdgeExtra extends Record<string, unknown>>(
+  document: JsonCanvasDocument<NodeExtra, EdgeExtra>,
+  selection: CanvasSelection,
+): { document: JsonCanvasDocument<NodeExtra, EdgeExtra>; selection: CanvasSelection; group: CanvasNode<NodeExtra> | null } {
+  return createGroupLikeSelection(document, selection)
+}
+
+export function frameSelection<NodeExtra extends Record<string, unknown>, EdgeExtra extends Record<string, unknown>>(
+  document: JsonCanvasDocument<NodeExtra, EdgeExtra>,
+  selection: CanvasSelection,
+): { document: JsonCanvasDocument<NodeExtra, EdgeExtra>; selection: CanvasSelection; group: CanvasNode<NodeExtra> | null } {
+  return createGroupLikeSelection(document, selection, { frame: true })
 }
 
 export function ungroupSelection<NodeExtra extends Record<string, unknown>, EdgeExtra extends Record<string, unknown>>(

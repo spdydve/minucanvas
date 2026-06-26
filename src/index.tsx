@@ -15,6 +15,7 @@ export {
   distributeSelection,
   duplicateSelection,
   emptyCanvas,
+  frameSelection,
   groupSelection,
   nodeLabel,
   sendSelectionBackward,

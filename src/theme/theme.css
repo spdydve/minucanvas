@@ -550,6 +550,17 @@
   border-style: dashed;
 }
 
+.minucanvas-node--frame::before {
+  background: color-mix(in srgb, var(--mc-canvas-surface) 18%, transparent);
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--mc-node-stroke, var(--mc-shape-stroke)) 64%, transparent);
+}
+
+.minucanvas-node--frame .minucanvas-node__group-label {
+  color: var(--mc-canvas-text);
+  font-weight: 700;
+}
+
 .minucanvas-node--active-group::before {
   border-color: var(--mc-node-selected, var(--mc-shape-selected));
   box-shadow: 0 0 0 3px var(--mc-accent-soft, var(--mc-canvas-accent-soft)), var(--mc-node-shadow, var(--mc-shape-shadow));

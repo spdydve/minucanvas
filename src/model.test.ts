@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createCanvasEdge, createCanvasNode, deleteSelection, duplicateSelection, shapeForTool, snapPoint } from './model'
+import { createCanvasEdge, createCanvasNode, deleteSelection, duplicateSelection, frameSelection, shapeForTool, snapPoint } from './model'
 import type { JsonCanvasDocument } from './types'
 
 describe('canvas model helpers', () => {
@@ -23,6 +23,19 @@ describe('canvas model helpers', () => {
       nodes: [document.nodes[1]],
       edges: [],
     })
+  })
+
+  it('creates frame groups around selected nodes', () => {
+    const document: JsonCanvasDocument = {
+      nodes: [createCanvasNode({ id: 'a', x: 0, y: 0 }), createCanvasNode({ id: 'b', x: 260, y: 0 })],
+      edges: [],
+    }
+
+    const result = frameSelection(document, { nodeIds: ['a', 'b'], edgeIds: [] })
+
+    expect(result.group).toMatchObject({ type: 'group', frame: true, label: 'Frame' })
+    expect(result.document.nodes.find((node) => node.id === 'a')?.groupId).toBe(result.group?.id)
+    expect(result.document.nodes.find((node) => node.id === 'b')?.groupId).toBe(result.group?.id)
   })
 
   it('duplicates selected subgraphs', () => {

@@ -27,6 +27,7 @@ import {
   deleteSelection as deleteSelectionFromDocument,
   distributeSelection as distributeSelectionInDocument,
   duplicateSelection,
+  frameSelection as frameSelectionInDocument,
   groupSelection as groupSelectionInDocument,
   nodeLabel,
   normalizeSelection,
@@ -1369,6 +1370,15 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
     return result.group
   }, [emitChange, emitSelection, readOnly, selection, value])
 
+  const frameCurrentSelection = useCallback(() => {
+    if (readOnly) return null
+    const result = frameSelectionInDocument(value, selection)
+    if (!result.group) return null
+    emitChange(result.document, 'update-node')
+    emitSelection(result.selection)
+    return result.group
+  }, [emitChange, emitSelection, readOnly, selection, value])
+
   const ungroupCurrentSelection = useCallback(() => {
     if (readOnly) return
     emitChange(ungroupSelectionInDocument(value, selection), 'update-node')
@@ -1552,6 +1562,7 @@ ${nodeMarkup}
     },
     createEdge: createEdgeBetween,
     groupSelection: groupCurrentSelection,
+    frameSelection: frameCurrentSelection,
     ungroupSelection: ungroupCurrentSelection,
     bringSelectionForward: bringCurrentSelectionForward,
     sendSelectionBackward: sendCurrentSelectionBackward,
@@ -1565,7 +1576,7 @@ ${nodeMarkup}
     zoomOut: () => zoomBy(-ZOOM_STEP),
     resetView,
     fitView,
-  }), [alignCurrentSelection, bringCurrentSelectionForward, bringCurrentSelectionToFront, createEdgeBetween, deleteCurrentSelection, distributeCurrentSelection, emitChange, emitSelection, exportPng, exportSvg, fitView, groupCurrentSelection, resetView, selection, sendCurrentSelectionBackward, sendCurrentSelectionToBack, setActiveTool, ungroupCurrentSelection, value, zoomBy])
+  }), [alignCurrentSelection, bringCurrentSelectionForward, bringCurrentSelectionToFront, createEdgeBetween, deleteCurrentSelection, distributeCurrentSelection, emitChange, emitSelection, exportPng, exportSvg, fitView, frameCurrentSelection, groupCurrentSelection, resetView, selection, sendCurrentSelectionBackward, sendCurrentSelectionToBack, setActiveTool, ungroupCurrentSelection, value, zoomBy])
 
   useEffect(() => {
     if (autoFocus) rootRef.current?.focus()
@@ -2702,7 +2713,7 @@ ${nodeMarkup}
           return (
             <div
               key={node.id}
-              className={`minucanvas-node minucanvas-node--type-${node.type} ${nodeShapeClass(node)}${selected ? ' minucanvas-node--selected' : ''}${editing ? ' minucanvas-node--editing' : ''}${pendingConnector ? ' minucanvas-node--connector-source' : ''}${activeGroupId === node.id ? ' minucanvas-node--active-group' : ''}${node.groupId && activeGroupId !== node.groupId ? ' minucanvas-node--group-child-locked' : ''}${node.locked ? ' minucanvas-node--locked' : ''}`}
+              className={`minucanvas-node minucanvas-node--type-${node.type} ${nodeShapeClass(node)}${node.frame ? ' minucanvas-node--frame' : ''}${selected ? ' minucanvas-node--selected' : ''}${editing ? ' minucanvas-node--editing' : ''}${pendingConnector ? ' minucanvas-node--connector-source' : ''}${activeGroupId === node.id ? ' minucanvas-node--active-group' : ''}${node.groupId && activeGroupId !== node.groupId ? ' minucanvas-node--group-child-locked' : ''}${node.locked ? ' minucanvas-node--locked' : ''}`}
               data-minucanvas-node-id={node.id}
               style={nodeStyle(node)}
               onPointerDown={(event) => handleNodePointerDown(event, node)}
@@ -3106,6 +3117,7 @@ ${nodeMarkup}
           <button type="button" onClick={() => { setExportOptions((options) => ({ ...options, area: selection.nodeIds.length > 0 || selection.edgeIds.length > 0 ? 'selection' : 'canvas' })); setExportDialogOpen(true); closeContextMenu() }}><span>Export…</span></button>
           <div className="minucanvas-context-menu__separator" />
           <button type="button" onClick={() => { groupCurrentSelection(); closeContextMenu() }} disabled={readOnly || selection.nodeIds.length < 2}><span>Group selection</span><kbd>⌘ G</kbd></button>
+          <button type="button" onClick={() => { frameCurrentSelection(); closeContextMenu() }} disabled={readOnly || selection.nodeIds.length < 2}><span>Frame selection</span></button>
           <button type="button" onClick={() => { ungroupCurrentSelection(); closeContextMenu() }} disabled={readOnly || selection.nodeIds.length === 0}><span>Ungroup</span><kbd>⇧⌘ G</kbd></button>
           <button type="button" onClick={() => { setSelectionLocked(true); closeContextMenu() }} disabled={readOnly || selection.nodeIds.length === 0}><span>Lock</span></button>
           <button type="button" onClick={() => { setSelectionLocked(false); closeContextMenu() }} disabled={readOnly || selection.nodeIds.length === 0}><span>Unlock</span></button>

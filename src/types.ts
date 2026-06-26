@@ -93,6 +93,8 @@ export type CanvasNode<NodeExtra extends Record<string, unknown> = Record<string
   shape?: CanvasShape
   style?: CanvasNodeStyle
   groupId?: string
+  /** Frame-like group/container for visual organization and export regions. */
+  frame?: boolean
   locked?: boolean
   imageWidth?: number
   imageHeight?: number
@@ -177,6 +179,7 @@ export interface CanvasHandle<NodeExtra extends Record<string, unknown> = Record
   createNode: (partial: Partial<CanvasNode<NodeExtra>>) => CanvasNode<NodeExtra>
   createEdge: (fromNode: string, toNode: string, partial?: Partial<CanvasEdge<EdgeExtra>>) => CanvasEdge<EdgeExtra> | null
   groupSelection: () => CanvasNode<NodeExtra> | null
+  frameSelection: () => CanvasNode<NodeExtra> | null
   ungroupSelection: () => void
   bringSelectionForward: () => void
   sendSelectionBackward: () => void
