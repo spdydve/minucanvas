@@ -127,7 +127,7 @@ See [`minu-diagram-syntax.md`](./minu-diagram-syntax.md) for the full syntax pro
 - Resize: drag selected item resize handles.
 - Change shape: select one or more nodes and press `Tab` to open the compact shape switcher.
 - Add connected shapes: select a non-group shape and click a `+` handle, or use `Cmd/Ctrl + Arrow`.
-- Draw free-standing lines/arrows: choose the line or arrow tool and drag on empty canvas space instead of starting from a node outline.
+- Draw free-standing lines/arrows: choose the line or arrow tool and drag on empty canvas space instead of starting from a node outline. Hold `Shift` while drawing to snap to 15° angle increments.
 
 ## Keyboard shortcuts
 
@@ -186,7 +186,7 @@ Text-note nodes automatically resize to fit their text plus padding when edited.
 - Diamond defaults to a grid-friendly 3:2 ratio.
 - Select nodes or edges to use the style toolbar for shape, stroke/fill/text colors, stroke style, width, font size/alignment, and edge routing.
 - Elbow connectors render with rounded corners. Select an elbow connector and drag a horizontal or vertical segment to customize its route.
-- Arrow and line tools can also draw free-standing marks when dragged on empty canvas space. Start from a node outline to create a connector; start on empty canvas to create an unconnected line/arrow.
+- Arrow and line tools can also draw free-standing marks when dragged on empty canvas space. Start from a node outline to create a connector; start on empty canvas to create an unconnected line/arrow. Hold `Shift` while drawing to snap to 15° increments for clean horizontal, vertical, and diagonal lines.
 
 ## Text, links, and images
 

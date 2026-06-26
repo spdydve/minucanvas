@@ -390,6 +390,20 @@ function freeEdgePath(start: Point, end: Point): string {
   return `M ${start.x} ${start.y} L ${end.x} ${end.y}`
 }
 
+function snapPointToAngle(start: Point, point: Point, stepDegrees = 15): Point {
+  const dx = point.x - start.x
+  const dy = point.y - start.y
+  const distance = Math.hypot(dx, dy)
+  if (distance === 0) return point
+  const step = (stepDegrees * Math.PI) / 180
+  const angle = Math.atan2(dy, dx)
+  const snappedAngle = Math.round(angle / step) * step
+  return {
+    x: start.x + Math.cos(snappedAngle) * distance,
+    y: start.y + Math.sin(snappedAngle) * distance,
+  }
+}
+
 function freeEdgeLabelPoint(edge: Pick<CanvasEdge, 'fromPoint' | 'toPoint'>): Point | null {
   if (!edge.fromPoint || !edge.toPoint) return null
   return { x: (edge.fromPoint.x + edge.toPoint.x) / 2, y: (edge.fromPoint.y + edge.toPoint.y) / 2 }
@@ -1540,7 +1554,7 @@ ${nodeMarkup}
       return
     }
 
-    if (event.shiftKey || panningModifierActive) {
+    if ((event.shiftKey || panningModifierActive) && !isConnectorTool(activeTool)) {
       event.currentTarget.setPointerCapture(event.pointerId)
       dragRef.current = {
         kind: 'pan',
@@ -1608,7 +1622,7 @@ ${nodeMarkup}
     setActiveGroupId(null)
     rootRef.current?.focus()
     setEditingEdgeId(null)
-    if (event.button === 1 || activeTool === 'hand' || event.altKey || event.shiftKey || panningModifierActive) {
+    if (event.button === 1 || activeTool === 'hand' || event.altKey || ((event.shiftKey || panningModifierActive) && !isConnectorTool(activeTool))) {
       event.currentTarget.setPointerCapture(event.pointerId)
       dragRef.current = {
         kind: 'pan',
@@ -1688,14 +1702,16 @@ ${nodeMarkup}
     const point = pointFromEvent(event)
     if (drag.kind === 'connector') {
       const hit = connectorAnchorAtPoint(point, drag.fromNodeId)
-      const pointer = hit ? hit.point : point
+      const fromNode = nodeById.get(drag.fromNodeId)
+      const start = fromNode ? anchorForEdgeAnchor(fromNode, drag.fromAnchor) : null
+      const pointer = hit ? hit.point : event.shiftKey && start ? snapPointToAngle(start, point) : point
       dragRef.current = { ...drag, pointer }
       forcePointerFrame((frame) => frame + 1)
       return
     }
 
     if (drag.kind === 'free-edge') {
-      dragRef.current = { ...drag, pointer: point }
+      dragRef.current = { ...drag, pointer: event.shiftKey ? snapPointToAngle(drag.startPoint, point) : point }
       forcePointerFrame((frame) => frame + 1)
       return
     }
@@ -1830,7 +1846,8 @@ ${nodeMarkup}
       return
     }
     if (drag.kind === 'edge-anchor') return
-    const targetPoint = pointFromEvent(event)
+    const rawTargetPoint = pointFromEvent(event)
+    const targetPoint = drag.kind === 'free-edge' && event.shiftKey ? snapPointToAngle(drag.startPoint, rawTargetPoint) : rawTargetPoint
     if (drag.kind === 'free-edge') {
       if (Math.hypot(targetPoint.x - drag.startPoint.x, targetPoint.y - drag.startPoint.y) > 4) {
         createFreeEdge(drag.startPoint, targetPoint, drag.toEnd)
