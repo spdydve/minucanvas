@@ -36,7 +36,7 @@ const LABELS: Record<CanvasTool, string> = {
 
 function ToolIcon({ tool }: { tool: CanvasTool }) {
   if (tool === 'select') {
-    return <path d="M8 4l8 14 2-6 6-2L8 4z" />
+    return <path d="M7 4l13 14-6.6-1.1L10 23 7 4z" />
   }
   if (tool === 'hand') {
     return <path d="M8 13v-2a1.5 1.5 0 013 0V7a1.5 1.5 0 013 0v3-5a1.5 1.5 0 013 0v5-3a1.5 1.5 0 013 0v8c0 4-2.5 6-6.5 6H14c-2.3 0-4-1-5.2-2.8L6 14.5A1.6 1.6 0 018 13z" />

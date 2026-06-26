@@ -61,17 +61,16 @@
   cursor: grab;
 }
 
-.minucanvas[data-tool="arrow"] .minucanvas-node,
-.minucanvas[data-tool="line"] .minucanvas-node {
-  cursor: crosshair;
-}
-
+.minucanvas[data-tool="arrow"],
+.minucanvas[data-tool="line"],
 .minucanvas[data-tool="text"],
 .minucanvas[data-tool="rectangle"],
 .minucanvas[data-tool="diamond"],
 .minucanvas[data-tool="ellipse"],
-.minucanvas[data-tool="pill"] {
-  cursor: copy;
+.minucanvas[data-tool="pill"],
+.minucanvas[data-tool="arrow"] .minucanvas-node,
+.minucanvas[data-tool="line"] .minucanvas-node {
+  cursor: crosshair;
 }
 
 .minucanvas-world {
