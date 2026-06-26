@@ -2486,9 +2486,9 @@ ${nodeMarkup}
             const fromNode = nodeById.get(connectorPreview.fromNodeId)
             if (!fromNode) return null
             const start = anchorForEdgeAnchor(fromNode, connectorPreview.fromAnchor)
-            return <path className="minucanvas-edge__preview" d={`M ${start.x} ${start.y} L ${connectorPreview.pointer.x} ${connectorPreview.pointer.y}`} />
+            return <path className="minucanvas-edge__preview" d={`M ${start.x} ${start.y} L ${connectorPreview.pointer.x} ${connectorPreview.pointer.y}`} markerEnd={connectorPreview.toEnd === 'arrow' ? 'url(#minucanvas-arrow)' : undefined} />
           })() : null}
-          {freeEdgePreview ? <path className="minucanvas-edge__preview" d={freeEdgePath(freeEdgePreview.startPoint, freeEdgePreview.pointer)} /> : null}
+          {freeEdgePreview ? <path className="minucanvas-edge__preview" d={freeEdgePath(freeEdgePreview.startPoint, freeEdgePreview.pointer)} markerEnd={freeEdgePreview.toEnd === 'arrow' ? 'url(#minucanvas-arrow)' : undefined} /> : null}
           {value.edges.map((edge) => {
             if (!selection.edgeIds.includes(edge.id)) return null
             const fromNode = nodeById.get(edge.fromNode)
