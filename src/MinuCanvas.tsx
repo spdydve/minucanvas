@@ -2656,7 +2656,9 @@ ${nodeMarkup}
               suppressContentEditableWarning
               ref={(element) => {
                 if (!element || !editingEdge || readOnly) return
+                const initialText = edge.label ?? ''
                 requestAnimationFrame(() => {
+                  if (!element.isConnected || element.textContent !== initialText) return
                   element.focus()
                   const range = document.createRange()
                   range.selectNodeContents(element)
@@ -2756,7 +2758,9 @@ ${nodeMarkup}
                 suppressContentEditableWarning
                 ref={(element) => {
                   if (!element || !editing || readOnly) return
+                  const initialText = nodeLabel(node)
                   requestAnimationFrame(() => {
+                    if (!element.isConnected || element.textContent !== initialText) return
                     element.focus()
                     const range = document.createRange()
                     range.selectNodeContents(element)
