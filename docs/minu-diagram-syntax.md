@@ -160,13 +160,62 @@ This is a layout hint, not a hard guarantee. Flow layout places nodes by graph d
 
 ### Layout
 
-Flow layout is the default. Use `layout mindmap` for a tree-style mind map arrangement:
+Minu diagram syntax uses one language with multiple layouts. The syntax describes nodes and relationships; the selected `layout` decides how those relationships are arranged and styled.
+
+Supported layouts:
+
+| Layout | Use for | Relationship meaning |
+| --- | --- | --- |
+| `layout flow` | process diagrams, app flows, system diagrams, decision trees | `A > B` means A leads to B |
+| `layout mindmap` | brainstorming, outlines, topic trees, knowledge maps | `A > B` means B is a branch/topic under A |
+
+Flow layout is the default.
+
+#### Flow layout
+
+```txt
+diagram "Login flow" {
+  layout flow
+  direction right
+
+  Start [shape: pill]
+  Login [label: "Login form"]
+  Valid [shape: diamond, label: "Valid?"]
+  Dashboard [shape: pill]
+  Error [shape: text, label: "Show error"]
+
+  Start > Login
+  Login > Valid
+  Valid > Dashboard: yes
+  Valid > Error: no [style: dashed]
+  Error > Login
+}
+```
+
+Flow layout behavior:
+
+- Edges represent directional flow: A happens before, calls, leads to, or depends on B.
+- `direction right/down/up/left` controls the main progression.
+- Nodes are arranged by graph depth in the chosen direction.
+- Branches, cycles, and decision nodes are allowed.
+- Arrowheads are kept by default.
+- Connector routing defaults to diagram-like elbow routing unless `routing` is specified.
+
+Use flow layout when the mental model is:
+
+```txt
+A happens, then B happens, then C happens.
+```
+
+#### Mind map layout
+
+Use `layout mindmap` for a tree-style mind map arrangement:
 
 ```txt
 diagram "Product plan" {
   layout mindmap
-  Product
 
+  Product
   Product > Research
   Product > Build
   Product > Launch
@@ -177,7 +226,51 @@ diagram "Product plan" {
 }
 ```
 
-Mind map layout uses normal MinuCanvas nodes and edges, but arranges them around the root. Nodes default to text-note shapes, grow from their text content, and can still opt into explicit shapes such as `shape: pill`. The root is selected from the first node with no incoming edge, or the first node if every node has an incoming edge. Root children split left/right by default, descendants continue outward, and branch edges default to curved lines with no arrowheads.
+Mind map layout behavior:
+
+- The document is still normal MinuCanvas / JSON Canvas nodes and edges.
+- Edges represent parent-to-child topic branches.
+- The root is selected from the first node with no incoming edge, or the first node if every node has an incoming edge.
+- Root children split left/right by default.
+- Descendants continue outward on their branch side.
+- Nodes default to text-note shapes, grow from their text content, and can still opt into explicit shapes such as `shape: pill`.
+- Branch edges default to curved lines with no arrowheads.
+
+Use mind map layout when the mental model is:
+
+```txt
+A contains or branches into B and C.
+```
+
+The same connection syntax has a different layout meaning. For example:
+
+```txt
+Product > Research
+```
+
+- In `layout flow`, Product leads to Research.
+- In `layout mindmap`, Research is a branch/topic under Product.
+
+There is intentionally no separate mind map language yet. If tree authoring becomes too verbose, a nested shorthand may be added later inside the same Minu diagram syntax:
+
+```txt
+diagram "Product plan" {
+  layout mindmap
+
+  Product {
+    Research {
+      Interviews
+      Competitors
+    }
+    Build {
+      MVP
+      Beta
+    }
+  }
+}
+```
+
+That shorthand is future syntax sugar only; the canonical compiled output should remain the same normal nodes and edges as explicit `Product > Research` connections.
 
 The compiler also accepts mind map options:
 

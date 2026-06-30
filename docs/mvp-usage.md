@@ -69,6 +69,11 @@ Useful syntax features:
 - edge styles: `A > B [style: dashed, routing: elbow]`
 - canonical routing values: `elbow`, `straight`, `curved`
 
+Minu diagram syntax uses one language with multiple layouts:
+
+- `layout flow` is the default. Use it for process diagrams, app flows, system diagrams, and decision trees. `A > B` means A leads to B; nodes are arranged by graph depth in the selected `direction`.
+- `layout mindmap` uses the same nodes and edges for brainstorming, outlines, and topic trees. `A > B` means B is a branch/topic under A; the root is centered and child branches split left/right.
+
 Mind map syntax uses the same nodes and edges with a tree layout:
 
 ```txt
