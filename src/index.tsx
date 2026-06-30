@@ -78,6 +78,7 @@ export type {
   AnyCanvasDocumentProfile,
   CanvasAlignment,
   CanvasChangeContext,
+  CanvasContextAction,
   CanvasDistribution,
   CanvasDocumentKind,
   CanvasDocumentProfile,

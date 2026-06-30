@@ -169,6 +169,16 @@ export interface CanvasRenderEdgeContext<EdgeExtra extends Record<string, unknow
   selected: boolean
 }
 
+export interface CanvasContextAction {
+  id: string
+  label: string
+  shortcut?: string
+  disabled?: boolean
+  danger?: boolean
+  separatorBefore?: boolean
+  onSelect: () => void
+}
+
 export interface CanvasHandle<NodeExtra extends Record<string, unknown> = Record<string, unknown>, EdgeExtra extends Record<string, unknown> = Record<string, unknown>> {
   getDocument: () => JsonCanvasDocument<NodeExtra, EdgeExtra>
   getSelection: () => CanvasSelection
@@ -238,7 +248,13 @@ export interface MinuCanvasProps<NodeExtra extends Record<string, unknown> = Rec
   autoFit?: boolean
   onViewportChange?: (viewport: CanvasViewport) => void
   renderNode?: (context: CanvasRenderNodeContext<NodeExtra>) => ReactNode
+  renderNodeAdornment?: (context: CanvasRenderNodeContext<NodeExtra>) => ReactNode
   renderEdgeLabel?: (context: CanvasRenderEdgeContext<EdgeExtra>) => ReactNode
+  getNodeContextActions?: (context: {
+    node: CanvasNode<NodeExtra>
+    selection: CanvasSelection
+    document: JsonCanvasDocument<NodeExtra, EdgeExtra>
+  }) => CanvasContextAction[]
   getNodeDefaults?: (tool: CanvasTool, point: { x: number; y: number }) => Partial<CanvasNode<NodeExtra>>
   onUpload?: (file: File) => Promise<string>
   onResolveLink?: (url: string) => Promise<{ label?: string } | null>

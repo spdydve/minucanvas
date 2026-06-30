@@ -199,7 +199,9 @@ The release script requires a clean worktree, verifies the tag does not already 
 
 - Use groups and frame-like groups (`frame: true`) for organization/export regions; select a frame/group and press `Enter`/`F2` or use the context menu to rename it.
 - Add service-specific properties by typing `JsonCanvasDocument<NodeExtra, EdgeExtra>` or `MinuCanvasDocument<NodeExtra, EdgeExtra>`.
+- Attach `url` to any node for generic external links; linked nodes show an open-link badge and can be opened with `Cmd/Ctrl+Enter`.
 - Use `renderNode` to render custom cards while keeping layout, selection, movement, and edge routing.
+- Use `renderNodeAdornment` and `getNodeContextActions` to add host-specific badges/actions such as linked-note controls.
 - Use document profiles such as `mindMapCanvasProfile`, or define an app profile with `CanvasDocumentProfile`.
 - Use `getNodeDefaults` to control newly-created nodes per tool.
 - Use `onUpload` to persist pasted/dropped image files and return a durable URL.

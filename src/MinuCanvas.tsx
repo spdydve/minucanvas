@@ -1,4 +1,5 @@
 import {
+  Fragment,
   forwardRef,
   useCallback,
   useEffect,
@@ -744,7 +745,9 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
     onToolChange,
     onViewportChange,
     renderNode,
+    renderNodeAdornment,
     renderEdgeLabel,
+    getNodeContextActions,
     getNodeDefaults,
     onUpload,
     onResolveLink,
@@ -894,14 +897,51 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
     }, 'update-node')
   }, [emitChange, readOnly, selection.nodeIds, value])
 
+  const selectedNode = useMemo(() => selection.nodeIds.length === 1 ? nodeById.get(selection.nodeIds[0] ?? '') ?? null : null, [nodeById, selection.nodeIds])
   const selectedImageNode = useMemo(() => selection.nodeIds.map((id) => nodeById.get(id)).find((node) => node?.type === 'image') ?? null, [nodeById, selection.nodeIds])
   const selectedLinkNode = useMemo(() => selection.nodeIds.map((id) => nodeById.get(id)).find((node) => node?.type === 'link') ?? null, [nodeById, selection.nodeIds])
-  const selectedGroupNode = useMemo(() => selection.nodeIds.length === 1 ? nodeById.get(selection.nodeIds[0] ?? '') : null, [nodeById, selection.nodeIds])
+  const selectedUrlNode = selectedNode?.url ? selectedNode : null
+  const selectedGroupNode = selectedNode?.type === 'group' ? selectedNode : null
 
   const renameSelectedGroup = useCallback(() => {
     if (readOnly || selectedGroupNode?.type !== 'group') return
     setEditingNodeId(selectedGroupNode.id)
   }, [readOnly, selectedGroupNode])
+
+  const openNodeUrl = useCallback((node: CanvasNode<NodeExtra> | null | undefined) => {
+    if (!node?.url) return false
+    window.open(node.url, '_blank', 'noopener,noreferrer')
+    return true
+  }, [])
+
+  const promptForNodeUrl = useCallback((node: CanvasNode<NodeExtra> | null | undefined) => {
+    if (readOnly || !node) return
+    const nextUrl = window.prompt(node.url ? 'Edit link URL' : 'Add link URL', node.url ?? '')?.trim()
+    if (nextUrl === undefined || nextUrl === node.url) return
+    emitChange({
+      ...value,
+      nodes: value.nodes.map((current) => {
+        if (current.id !== node.id) return current
+        const next = { ...current }
+        if (nextUrl) next.url = nextUrl
+        else delete next.url
+        return next
+      }),
+    }, 'update-node')
+  }, [emitChange, readOnly, value])
+
+  const removeNodeUrl = useCallback((node: CanvasNode<NodeExtra> | null | undefined) => {
+    if (readOnly || !node?.url) return
+    emitChange({
+      ...value,
+      nodes: value.nodes.map((current) => {
+        if (current.id !== node.id) return current
+        const next = { ...current }
+        delete next.url
+        return next
+      }),
+    }, 'update-node')
+  }, [emitChange, readOnly, value])
 
   const resizeSelectedImages = useCallback((scale: number) => {
     if (readOnly || selection.nodeIds.length === 0) return
@@ -918,9 +958,9 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
   }, [emitChange, readOnly, selection.nodeIds, value])
 
   const openSelectedExternalNode = useCallback(() => {
-    const target = selectedImageNode?.file ?? selectedImageNode?.url ?? selectedLinkNode?.url
+    const target = selectedUrlNode?.url ?? selectedImageNode?.file ?? selectedImageNode?.url ?? selectedLinkNode?.url
     if (target) window.open(target, '_blank', 'noopener,noreferrer')
-  }, [selectedImageNode, selectedLinkNode])
+  }, [selectedImageNode, selectedLinkNode, selectedUrlNode])
 
   const replaceSelectedImage = useCallback(async (file: File) => {
     if (readOnly || !selectedImageNode || !isImageFile(file)) return
@@ -2328,6 +2368,11 @@ ${nodeMarkup}
       else groupCurrentSelection()
       return
     }
+    if (mod && event.key === 'Enter' && selectedNode?.url) {
+      event.preventDefault()
+      openNodeUrl(selectedNode)
+      return
+    }
     if (mod && event.key === ']' && !readOnly) {
       event.preventDefault()
       bringCurrentSelectionToFront()
@@ -2440,7 +2485,7 @@ ${nodeMarkup}
       event.preventDefault()
       setActiveTool(nextTool)
     }
-  }, [bringCurrentSelectionToFront, copyCurrentSelection, createConnectedNode, createMindMapNode, cycleSelection, deleteCurrentSelection, duplicateCurrentSelection, emitSelection, groupCurrentSelection, resolvedInteractionMode, moveSelectedNodesByKeyboard, navigateSelection, nodeById, openShapeSwitcher, pasteClipboard, readOnly, redo, resetView, selection.edgeIds, selection.nodeIds, sendCurrentSelectionToBack, setActiveTool, shortcuts, undo, ungroupCurrentSelection, zoomBy])
+  }, [bringCurrentSelectionToFront, copyCurrentSelection, createConnectedNode, createMindMapNode, cycleSelection, deleteCurrentSelection, duplicateCurrentSelection, emitSelection, groupCurrentSelection, resolvedInteractionMode, moveSelectedNodesByKeyboard, navigateSelection, nodeById, openNodeUrl, openShapeSwitcher, pasteClipboard, readOnly, redo, resetView, selectedNode, selection.edgeIds, selection.nodeIds, sendCurrentSelectionToBack, setActiveTool, shortcuts, undo, ungroupCurrentSelection, zoomBy])
 
   const handleKeyUp = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Shift' || event.key === ' ') setPanningModifierActive(false)
@@ -2492,6 +2537,10 @@ ${nodeMarkup}
   const createNodePreviewShape = createNodePreview ? shapeForTool(createNodePreview.tool) : null
   const selectionBox = dragRef.current?.kind === 'selection-box' ? rectFromPoints(dragRef.current.startPoint, dragRef.current.pointer) : null
   const activeGroup = activeGroupId ? nodeById.get(activeGroupId) : null
+  const nodeContextActions = useMemo(() => {
+    if (!selectedNode || !getNodeContextActions) return []
+    return getNodeContextActions({ node: selectedNode, selection, document: value })
+  }, [getNodeContextActions, selectedNode, selection, value])
   const worldStyle: CSSProperties = {
     transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`,
   }
@@ -2718,6 +2767,8 @@ ${nodeMarkup}
           const editing = editingNodeId === node.id
           const pendingConnector = pendingConnectorAnchor?.nodeId === node.id
           const polygonPath = polygonShapePath(node.shape)
+          const nodeAdornment = renderNodeAdornment?.({ node, selected, editing })
+          const showUrlBadge = Boolean(node.url) && node.type !== 'link' && !editing
           return (
             <div
               key={node.id}
@@ -2750,6 +2801,27 @@ ${nodeMarkup}
                 <svg className="minucanvas-node__shape" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
                   <path d={polygonPath} />
                 </svg>
+              ) : null}
+              {(showUrlBadge || nodeAdornment) ? (
+                <div className="minucanvas-node__adornments">
+                  {showUrlBadge ? (
+                    <button
+                      type="button"
+                      className="minucanvas-node__link-badge"
+                      aria-label="Open linked URL"
+                      title={node.url}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onDoubleClick={(event) => event.stopPropagation()}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        openNodeUrl(node)
+                      }}
+                    >
+                      ↗
+                    </button>
+                  ) : null}
+                  {nodeAdornment}
+                </div>
               ) : null}
               <div
                 key={editing ? `${node.id}-editing` : `${node.id}-viewing`}
@@ -3132,8 +3204,16 @@ ${nodeMarkup}
           <button type="button" onClick={() => { ungroupCurrentSelection(); closeContextMenu() }} disabled={readOnly || selection.nodeIds.length === 0}><span>Ungroup</span><kbd>⇧⌘ G</kbd></button>
           <button type="button" onClick={() => { setSelectionLocked(true); closeContextMenu() }} disabled={readOnly || selection.nodeIds.length === 0}><span>Lock</span></button>
           <button type="button" onClick={() => { setSelectionLocked(false); closeContextMenu() }} disabled={readOnly || selection.nodeIds.length === 0}><span>Unlock</span></button>
-          <button type="button" onClick={() => { openSelectedExternalNode(); closeContextMenu() }} disabled={!selectedImageNode && !selectedLinkNode}><span>{selectedImageNode ? 'Open image' : 'Open link'}</span></button>
+          <button type="button" onClick={() => { promptForNodeUrl(selectedNode); closeContextMenu() }} disabled={readOnly || !selectedNode}><span>{selectedUrlNode ? 'Edit link…' : 'Add link…'}</span></button>
+          <button type="button" onClick={() => { openSelectedExternalNode(); closeContextMenu() }} disabled={!selectedUrlNode && !selectedImageNode && !selectedLinkNode}><span>{selectedImageNode && !selectedUrlNode ? 'Open image' : 'Open link'}</span><kbd>{selectedUrlNode ? '⌘ Enter' : ''}</kbd></button>
+          <button type="button" onClick={() => { removeNodeUrl(selectedNode); closeContextMenu() }} disabled={readOnly || !selectedUrlNode}><span>Remove link</span></button>
           <button type="button" onClick={() => { imageReplaceInputRef.current?.click(); closeContextMenu() }} disabled={readOnly || !selectedImageNode}><span>Replace image…</span></button>
+          {nodeContextActions.map((action) => (
+            <Fragment key={action.id}>
+              {action.separatorBefore ? <div className="minucanvas-context-menu__separator" /> : null}
+              <button type="button" className={action.danger ? 'minucanvas-context-menu__danger' : undefined} onClick={() => { action.onSelect(); closeContextMenu() }} disabled={action.disabled}><span>{action.label}</span>{action.shortcut ? <kbd>{action.shortcut}</kbd> : null}</button>
+            </Fragment>
+          ))}
           <div className="minucanvas-context-menu__submenu">
             <button type="button" disabled={readOnly || !selection.nodeIds.some((id) => nodeById.get(id)?.type === 'image')}><span>Image size</span><kbd>›</kbd></button>
             <div className="minucanvas-context-menu minucanvas-context-menu__submenu-panel" role="menu">

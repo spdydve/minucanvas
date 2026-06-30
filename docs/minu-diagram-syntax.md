@@ -84,6 +84,14 @@ Later aliases can map unsupported Eraser shapes like `cylinder`, `document`, `st
 
 ### Links and images
 
+Any node can carry a generic external `url` while keeping its normal node type and shape:
+
+```txt
+Research [shape: text, url: "https://docs.example.com/research"]
+```
+
+Use `type: link` when the link itself is the primary canvas object, and `type: image` for image URLs:
+
 ```txt
 Docs [type: link, url: "https://docs.example.com", label: "Docs"]
 Screenshot [type: image, url: "https://example.com/screenshot.png"]

@@ -75,6 +75,8 @@ Core MinuCanvas should not know what `noteId` means. It should provide extension
 
 ### Phase 1 — Generic URL affordances
 
+Status: initial implementation exists.
+
 Add first-class UI behavior for `node.url` on any node.
 
 Behavior:
@@ -99,6 +101,8 @@ Implementation notes:
 - Do not draw a default outline for dedicated link nodes; linked regular nodes keep their normal shape rendering.
 
 ### Phase 2 — Host node adornments
+
+Status: initial `renderNodeAdornment` implementation exists.
 
 Add a generic adornment slot so hosts can render note badges, folder badges, status pills, or icons without replacing the node renderer.
 
@@ -126,6 +130,8 @@ Example MinuNotes usage:
 ```
 
 ### Phase 3 — Context menu extension actions
+
+Status: initial `getNodeContextActions` implementation exists for selected nodes.
 
 Add host-provided context menu actions. This lets MinuNotes add `Link to note…`, `Open linked note`, and `Remove note link` without forking the menu.
 

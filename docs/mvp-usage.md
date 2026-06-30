@@ -201,9 +201,11 @@ Text-note nodes automatically resize to fit their text plus padding when edited.
 
 The text tool creates a true text shape with no visible container by default. It shows a dashed outline while selected or editing.
 
-### Link nodes
+### Linked nodes and link nodes
 
-Pasting/dropping a normal URL creates a compact link node. Link labels default to the URL hostname. Hosts can optionally resolve better labels with:
+Any node can carry an external `url`. Linked regular nodes keep their normal shape/text behavior and show a small external-link badge. Select a linked node and press `Cmd/Ctrl+Enter` to open it, or right-click the node and use `Add link…`, `Edit link…`, `Open link`, or `Remove link`.
+
+Pasting/dropping a normal URL creates a compact dedicated link node. Link labels default to the URL hostname. Hosts can optionally resolve better labels with:
 
 ```tsx
 <MinuCanvas
@@ -211,7 +213,7 @@ Pasting/dropping a normal URL creates a compact link node. Link labels default t
 />
 ```
 
-Double-click a link node or use the context menu `Open link` action to open it.
+Double-click a dedicated link node or use the context menu `Open link` action to open it.
 
 ### Image nodes
 
