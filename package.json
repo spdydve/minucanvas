@@ -78,5 +78,8 @@
     "excalidraw"
   ],
   "author": "dpklabs",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "@dagrejs/dagre": "^1.1.8"
+  }
 }

@@ -1,3 +1,4 @@
+import dagre from '@dagrejs/dagre'
 import { defaultEdgeConnection } from '../geometry'
 import { layoutMindMap } from '../mindmap'
 import { createCanvasEdge, createCanvasNode } from '../model'
@@ -42,10 +43,9 @@ export function compileParsedMinuDiagram(parsed: ParsedMinuDiagram, options: Min
   const groupPadding = options.groupPadding ?? GROUP_PADDING
   const gridSize = options.gridSize === false ? null : options.gridSize ?? 20
   const layout = options.layout ?? parsed.layout ?? 'flow'
-  const ranks = layout === 'mindmap' ? new Map(parsed.nodes.map((node) => [node.id, 0])) : rankNodes(parsed)
   const nodePositions = layout === 'mindmap'
     ? new Map(parsed.nodes.map((node) => [node.id, origin]))
-    : placeNodes(parsed, ranks, origin, nodeGap, rankGap, gridSize)
+    : placeNodes(parsed, origin, nodeGap, rankGap, gridSize)
 
   const nodes: CanvasNode[] = []
   const groupNodes: CanvasNode[] = []
@@ -175,92 +175,55 @@ function edgeDirection(connection: MinuDiagramConnection): { fromNode: string; t
   return { fromNode: connection.from, toNode: connection.to, fromEnd: 'none', toEnd: 'arrow' }
 }
 
-function rankNodes(parsed: ParsedMinuDiagram): Map<string, number> {
-  const ranks = new Map(parsed.nodes.map((node) => [node.id, 0]))
-  const dag = new Map<string, Set<string>>()
-
-  for (const connection of parsed.connections) {
-    const from = connection.operator === '<' ? connection.to : connection.from
-    const to = connection.operator === '<' ? connection.from : connection.to
-    if (from === to || pathExists(dag, to, from)) continue
-    dag.set(from, new Set([...(dag.get(from) ?? []), to]))
-  }
-
-  for (let pass = 0; pass < parsed.nodes.length; pass += 1) {
-    let changed = false
-    for (const [from, targets] of dag) {
-      for (const to of targets) {
-        const nextRank = (ranks.get(from) ?? 0) + 1
-        if (nextRank > (ranks.get(to) ?? 0)) {
-          ranks.set(to, nextRank)
-          changed = true
-        }
-      }
-    }
-    if (!changed) break
-  }
-  return ranks
-}
-
-function pathExists(graph: Map<string, Set<string>>, from: string, to: string): boolean {
-  const visited = new Set<string>()
-  const stack = [from]
-  while (stack.length > 0) {
-    const current = stack.pop()
-    if (!current || visited.has(current)) continue
-    if (current === to) return true
-    visited.add(current)
-    stack.push(...(graph.get(current) ?? []))
-  }
-  return false
-}
-
 function placeNodes(
   parsed: ParsedMinuDiagram,
-  ranks: Map<string, number>,
   origin: { x: number; y: number },
   nodeGap: number,
   rankGap: number,
   gridSize: number | null,
 ): Map<string, { x: number; y: number }> {
-  const byRank = new Map<number, MinuDiagramNode[]>()
-  for (const node of parsed.nodes) {
-    const rank = ranks.get(node.id) ?? 0
-    byRank.set(rank, [...(byRank.get(rank) ?? []), node])
-  }
-  const allSizes = parsed.nodes.map(estimatedNodeSize)
-  const laneHeight = Math.max(DEFAULT_HEIGHT, ...allSizes.map((size) => size.height))
-  const laneWidth = Math.max(DEFAULT_WIDTH, ...allSizes.map((size) => size.width))
-  const snapCenter = (value: number) => gridSize ? Math.round(value / gridSize) * gridSize : value
-  const primaryStep = snapCenter(DEFAULT_WIDTH + rankGap)
-  const secondaryStep = snapCenter(laneHeight + nodeGap)
-  const baseCenter = {
-    x: snapCenter(origin.x + laneWidth / 2),
-    y: snapCenter(origin.y + laneHeight / 2),
-  }
-  const positions = new Map<string, { x: number; y: number }>()
-  for (const [rank, nodes] of [...byRank.entries()].sort((a, b) => a[0] - b[0])) {
-    const sizes = nodes.map(estimatedNodeSize)
-    nodes.forEach((node, index) => {
-      const size = sizes[index] ?? { width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT }
-      const primary = rank * primaryStep
-      const secondary = index * secondaryStep
-      const center = {
-        x: parsed.direction === 'left'
-          ? baseCenter.x - primary
-          : parsed.direction === 'right'
-            ? baseCenter.x + primary
-            : baseCenter.x + secondary,
-        y: parsed.direction === 'up'
-          ? baseCenter.y - primary
-          : parsed.direction === 'down'
-            ? baseCenter.y + primary
-            : baseCenter.y + secondary,
-      }
-      positions.set(node.id, { x: center.x - size.width / 2, y: center.y - size.height / 2 })
-    })
-  }
-  return positions
+  // Mermaid's flowcharts delegate ordering and coordinate assignment to Dagre. In
+  // particular, its crossing-minimization passes are much more reliable than
+  // placing each rank in declaration order, which often made links pass through
+  // unrelated nodes in fan-in and fan-out diagrams.
+  const graph = new dagre.graphlib.Graph({ multigraph: true })
+  graph.setGraph({
+    rankdir: parsed.direction === 'left' ? 'RL' : parsed.direction === 'up' ? 'BT' : parsed.direction === 'down' ? 'TB' : 'LR',
+    nodesep: nodeGap,
+    ranksep: rankGap,
+    edgesep: Math.max(20, Math.round(nodeGap / 2)),
+    marginx: 0,
+    marginy: 0,
+    ranker: 'network-simplex',
+    acyclicer: 'greedy',
+  })
+  graph.setDefaultEdgeLabel(() => ({}))
+
+  for (const node of parsed.nodes) graph.setNode(node.id, estimatedNodeSize(node))
+  parsed.connections.forEach((connection, index) => {
+    const direction = edgeDirection(connection)
+    if (direction.fromNode !== direction.toNode) graph.setEdge(direction.fromNode, direction.toNode, {}, `edge-${index}`)
+  })
+  dagre.layout(graph)
+
+  const raw = parsed.nodes.map((node) => {
+    const size = estimatedNodeSize(node)
+    const point = graph.node(node.id) as { x?: number; y?: number } | undefined
+    return {
+      id: node.id,
+      width: size.width,
+      height: size.height,
+      x: (point?.x ?? size.width / 2) - size.width / 2,
+      y: (point?.y ?? size.height / 2) - size.height / 2,
+    }
+  })
+  const minX = Math.min(0, ...raw.map((point) => point.x))
+  const minY = Math.min(0, ...raw.map((point) => point.y))
+  const snap = (value: number) => gridSize ? Math.round(value / gridSize) * gridSize : value
+  return new Map(raw.map((point) => [point.id, {
+    x: snap(origin.x + point.x - minX + point.width / 2) - point.width / 2,
+    y: snap(origin.y + point.y - minY + point.height / 2) - point.height / 2,
+  }]))
 }
 
 function estimatedNodeSize(node: MinuDiagramNode): { width: number; height: number } {

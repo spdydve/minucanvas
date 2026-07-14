@@ -100,6 +100,42 @@ describe('compileMinuDiagramSyntax', () => {
     expect(backEdge).toMatchObject({ fromSide: 'bottom', toSide: 'bottom', style: { routing: 'elbow' } })
   })
 
+  it('reorders ranks to reduce link crossings instead of preserving adversarial declaration order', () => {
+    const result = compileMinuDiagramSyntax(`
+      direction right
+      A > D
+      B > C
+    `, { gridSize: false })
+    const centerY = (id: string) => {
+      const node = result.document.nodes.find((item) => item.id === id)!
+      return node.y + node.height / 2
+    }
+
+    expect(Math.sign(centerY('A') - centerY('B'))).toBe(Math.sign(centerY('D') - centerY('C')))
+  })
+
+  it('keeps nodes separated in branching layouts with mixed sizes', () => {
+    const result = compileMinuDiagramSyntax(`
+      direction down
+      Root > A
+      Root > B
+      Root > C
+      B [shape: diamond]
+      C [width: 420, height: 120]
+    `, { gridSize: false })
+    const nodes = result.document.nodes
+
+    for (let index = 0; index < nodes.length; index += 1) {
+      for (let otherIndex = index + 1; otherIndex < nodes.length; otherIndex += 1) {
+        const a = nodes[index]!
+        const b = nodes[otherIndex]!
+        const overlaps = a.x < b.x + b.width && a.x + a.width > b.x
+          && a.y < b.y + b.height && a.y + a.height > b.y
+        expect(overlaps, `${a.id} overlaps ${b.id}`).toBe(false)
+      }
+    }
+  })
+
   it('center-aligns mixed-height nodes on the main horizontal lane', () => {
     const result = compileMinuDiagramSyntax(`
       direction right
