@@ -74,6 +74,44 @@ describe('MinuCanvas linked nodes', () => {
   })
 })
 
+describe('MinuCanvas connector routing', () => {
+  it('preserves manually routed connector waypoints when a connected node moves', async () => {
+    const initialDocument: JsonCanvasDocument = {
+      nodes: [
+        createCanvasNode({ id: 'A', text: 'A', x: 0, y: 0, width: 120, height: 80 }),
+        createCanvasNode({ id: 'B', text: 'B', x: 260, y: 0, width: 120, height: 80 }),
+      ],
+      edges: [
+        {
+          id: 'edge-1',
+          fromNode: 'A',
+          toNode: 'B',
+          fromSide: 'bottom',
+          toSide: 'left',
+          fromAnchor: { side: 'bottom', position: 0.25 },
+          toAnchor: { side: 'left', position: 0.75 },
+          toEnd: 'arrow',
+          style: { routing: 'elbow' },
+          waypoints: [{ x: 120, y: 180 }, { x: 220, y: 180 }],
+        },
+      ],
+    }
+    const view = renderCanvasHarness(initialDocument, { nodeIds: ['A'], edgeIds: [] })
+    const canvas = view.container.querySelector<HTMLElement>('.minucanvas')!
+
+    fireEvent.keyDown(canvas, { key: 'ArrowRight' })
+
+    await waitFor(() => expect(view.latestDocument.nodes.find((node) => node.id === 'A')?.x).toBe(20))
+    expect(view.latestDocument.edges[0]).toMatchObject({
+      fromSide: 'bottom',
+      toSide: 'left',
+      fromAnchor: { side: 'bottom', position: 0.25 },
+      toAnchor: { side: 'left', position: 0.75 },
+      waypoints: [{ x: 120, y: 180 }, { x: 220, y: 180 }],
+    })
+  })
+})
+
 describe('MinuCanvas keyboard creation', () => {
   it('allows Cmd/Ctrl+Arrow to create from a node that is already being edited after keyboard creation', async () => {
     const initialDocument: JsonCanvasDocument = {

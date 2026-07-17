@@ -645,6 +645,12 @@ function recenterMovedNodeEdges<NodeExtra extends Record<string, unknown>, EdgeE
       const toNode = nodes.get(edge.toNode)
       if (!fromNode || !toNode) return edge
 
+      // User-edited routes are explicit canvas geometry. Once a connector has
+      // waypoints, moving an attached node should preserve that hand-routed
+      // path instead of re-running automatic endpoint placement and snapping
+      // the connector back through nodes or other lines.
+      if (edge.waypoints?.length) return edge
+
       // Mind map branch edges intentionally preserve their left/right side.
       // Re-running generic defaults would treat left branches as back-edges
       // and move them to bottom-to-bottom anchors after the root is dragged.
