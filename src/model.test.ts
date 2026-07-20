@@ -91,10 +91,10 @@ describe('canvas model helpers', () => {
     expect(result.document.nodes.find((node) => node.id === 'b')?.groupId).toBe(result.group?.id)
   })
 
-  it('duplicates selected subgraphs', () => {
+  it('duplicates selected subgraphs and offsets their manual routes', () => {
     const document: JsonCanvasDocument = {
       nodes: [createCanvasNode({ id: 'a' }), createCanvasNode({ id: 'b' })],
-      edges: [createCanvasEdge('a', 'b', { id: 'ab' })],
+      edges: [createCanvasEdge('a', 'b', { id: 'ab', routingMode: 'manual', waypoints: [{ x: 100, y: 120 }] })],
     }
 
     const duplicated = duplicateSelection(document, { nodeIds: ['a', 'b'], edgeIds: [] })
@@ -103,6 +103,7 @@ describe('canvas model helpers', () => {
     expect(duplicated.document.edges).toHaveLength(2)
     expect(duplicated.selection.nodeIds).toHaveLength(2)
     expect(duplicated.selection.edgeIds).toHaveLength(1)
+    expect(duplicated.document.edges.find((edge) => edge.id !== 'ab')?.waypoints).toEqual([{ x: 140, y: 160 }])
   })
 
   it('creates free-standing and hybrid line edges with points', () => {

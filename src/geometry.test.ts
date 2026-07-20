@@ -52,6 +52,16 @@ describe('connector anchor geometry', () => {
     })
   })
 
+  it('keeps vertical endpoints when an above target moves slightly left', () => {
+    const source = createCanvasNode({ id: 'source', x: 400, y: 400, width: 180, height: 100 })
+    const aboveLeft = createCanvasNode({ id: 'target', x: 260, y: 100, width: 180, height: 100 })
+
+    expect(defaultEdgeConnection(source, aboveLeft)).toMatchObject({
+      fromSide: 'top',
+      toSide: 'bottom',
+    })
+  })
+
   it('uses editable waypoints for edge paths and handles', () => {
     const fromNode = createCanvasNode({ id: 'from', x: 0, y: 0, width: 100, height: 100 })
     const toNode = createCanvasNode({ id: 'to', x: 200, y: 0, width: 100, height: 100 })

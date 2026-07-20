@@ -657,11 +657,13 @@ function isMindMapBranchEdge(edge: CanvasEdge): boolean {
 function recenterMovedNodeEdges<NodeExtra extends Record<string, unknown>, EdgeExtra extends Record<string, unknown>>(
   document: JsonCanvasDocument<NodeExtra, EdgeExtra>,
   movedNodeIds: readonly string[],
+  previousDocument?: JsonCanvasDocument<NodeExtra, EdgeExtra>,
 ): JsonCanvasDocument<NodeExtra, EdgeExtra> {
   const moved = new Set(movedNodeIds)
   if (moved.size === 0) return document
 
   const nodes = new Map(document.nodes.map((node) => [node.id, node]))
+  const previousNodes = new Map(previousDocument?.nodes.map((node) => [node.id, node]) ?? [])
   return {
     ...document,
     edges: document.edges.map((edge) => {
@@ -671,10 +673,41 @@ function recenterMovedNodeEdges<NodeExtra extends Record<string, unknown>, EdgeE
       const toNode = nodes.get(edge.toNode)
       if (!fromNode || !toNode) return edge
 
-      // User-edited routes are explicit canvas geometry. Once a connector has
-      // waypoints, moving an attached node should preserve that hand-routed
-      // path instead of re-running automatic endpoint placement and snapping
-      // the connector back through nodes or other lines.
+      // Waypoints use absolute canvas coordinates. If both endpoints move as
+      // one selection/group, carry the manual route with them rather than
+      // leaving it pinned to its former canvas position.
+      if (edge.waypoints?.length && previousDocument) {
+        const previousFrom = previousNodes.get(edge.fromNode)
+        const previousTo = previousNodes.get(edge.toNode)
+        if (previousFrom && previousTo && moved.has(edge.fromNode) && moved.has(edge.toNode)) {
+          const sharedGroupId = fromNode.groupId && fromNode.groupId === toNode.groupId ? fromNode.groupId : null
+          const previousGroup = sharedGroupId ? previousNodes.get(sharedGroupId) : null
+          const nextGroup = sharedGroupId ? nodes.get(sharedGroupId) : null
+          if (sharedGroupId && moved.has(sharedGroupId) && previousGroup && nextGroup && previousGroup.width > 0 && previousGroup.height > 0) {
+            const scaleX = nextGroup.width / previousGroup.width
+            const scaleY = nextGroup.height / previousGroup.height
+            return {
+              ...edge,
+              waypoints: edge.waypoints.map((point) => ({
+                x: nextGroup.x + (point.x - previousGroup.x) * scaleX,
+                y: nextGroup.y + (point.y - previousGroup.y) * scaleY,
+              })),
+            }
+          }
+
+          const fromDelta = { x: fromNode.x - previousFrom.x, y: fromNode.y - previousFrom.y }
+          const toDelta = { x: toNode.x - previousTo.x, y: toNode.y - previousTo.y }
+          if (Math.abs(fromDelta.x - toDelta.x) <= 0.5 && Math.abs(fromDelta.y - toDelta.y) <= 0.5) {
+            return {
+              ...edge,
+              waypoints: edge.waypoints.map((point) => ({ x: point.x + fromDelta.x, y: point.y + fromDelta.y })),
+            }
+          }
+        }
+      }
+
+      // User-edited routes are explicit canvas geometry. Moving only one end
+      // should preserve that route and its manually selected anchors.
       if (edge.routingMode === 'manual' || edge.waypoints?.length) return edge
 
       // Mind map branch edges intentionally preserve their left/right side.
@@ -1089,6 +1122,7 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
       fromEnd: 'none',
       toEnd,
       style: { routing: 'straight' },
+      routingMode: 'manual',
     } as Partial<CanvasEdge<EdgeExtra>>)
     emitChange({ ...value, edges: [...value.edges, edge] }, 'create-edge')
     emitSelection({ nodeIds: [], edgeIds: [edge.id] })
@@ -1201,7 +1235,7 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
       ), value)
       const movedSet = new Set(movedNodeIds)
       const changedGroups = new Set(moved.nodes.flatMap((node) => node.groupId && movedSet.has(node.id) && !movedSet.has(node.groupId) ? [node.groupId] : []))
-      emitChange(recenterMovedNodeEdges(fitGroupsToChildren(moved, changedGroups), movedNodeIds), 'move-node')
+      emitChange(recenterMovedNodeEdges(fitGroupsToChildren(moved, changedGroups), movedNodeIds, value), 'move-node')
       return true
     },
     [emitChange, expandNodeIdsForGroups, gridSize, nodeById, readOnly, selection.nodeIds, snapToGrid, value],
@@ -1489,12 +1523,12 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
 
   const alignCurrentSelection = useCallback((alignment: CanvasAlignment) => {
     if (readOnly || selection.nodeIds.length < 2) return
-    emitChange(recenterMovedNodeEdges(alignSelectionInDocument(value, selection, alignment), selection.nodeIds), 'move-node')
+    emitChange(recenterMovedNodeEdges(alignSelectionInDocument(value, selection, alignment), selection.nodeIds, value), 'move-node')
   }, [emitChange, readOnly, selection, value])
 
   const distributeCurrentSelection = useCallback((distribution: CanvasDistribution) => {
     if (readOnly || selection.nodeIds.length < 3) return
-    emitChange(recenterMovedNodeEdges(distributeSelectionInDocument(value, selection, distribution), selection.nodeIds), 'move-node')
+    emitChange(recenterMovedNodeEdges(distributeSelectionInDocument(value, selection, distribution), selection.nodeIds, value), 'move-node')
   }, [emitChange, readOnly, selection, value])
 
   const exportDocumentForArea = useCallback((area: ExportArea): JsonCanvasDocument<NodeExtra, EdgeExtra> => {
@@ -1770,8 +1804,10 @@ ${nodeMarkup}
           fromAnchor: { side: pendingConnectorAnchor.side, position: pendingConnectorAnchor.position },
           toAnchor: hit.anchor,
           toEnd: pendingConnectorAnchor.toEnd,
+          routingMode: 'manual',
         } as Partial<CanvasEdge<EdgeExtra>>)
         setPendingConnectorAnchor(null)
+        setActiveTool('select')
         return
       }
 
@@ -1809,7 +1845,7 @@ ${nodeMarkup}
       nodeIds: dragNodeIds,
       originals,
     }
-  }, [activeGroupId, activeTool, connectorAnchorAtPoint, createEdgeBetween, emitSelection, expandNodeIdsForGroups, nodeById, pendingConnectorAnchor, panningModifierActive, pointFromEvent, readOnly, selection.nodeIds, viewport])
+  }, [activeGroupId, activeTool, connectorAnchorAtPoint, createEdgeBetween, emitSelection, expandNodeIdsForGroups, nodeById, pendingConnectorAnchor, panningModifierActive, pointFromEvent, readOnly, selection.nodeIds, setActiveTool, viewport])
 
   const handleSurfacePointerDown = useCallback((event: PointerEvent<HTMLDivElement>) => {
     setContextMenu(null)
@@ -1844,8 +1880,10 @@ ${nodeMarkup}
             fromAnchor: { side: pendingConnectorAnchor.side, position: pendingConnectorAnchor.position },
             toAnchor: hit.anchor,
             toEnd: pendingConnectorAnchor.toEnd,
+            routingMode: 'manual',
           } as Partial<CanvasEdge<EdgeExtra>>)
           setPendingConnectorAnchor(null)
+          setActiveTool('select')
           return
         }
 
@@ -1883,7 +1921,7 @@ ${nodeMarkup}
     }
 
     emitSelection({ nodeIds: [], edgeIds: [] })
-  }, [activeTool, connectorAnchorAtPoint, createEdgeBetween, createNodeAt, emitSelection, pendingConnectorAnchor, panningModifierActive, pointFromEvent, readOnly, selection, viewport])
+  }, [activeTool, connectorAnchorAtPoint, createEdgeBetween, createNodeAt, emitSelection, pendingConnectorAnchor, panningModifierActive, pointFromEvent, readOnly, selection, setActiveTool, viewport])
 
   const handlePointerMove = useCallback((event: PointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current
@@ -1997,6 +2035,7 @@ ${nodeMarkup}
         recenterMovedNodeEdges(
           fitted,
           [drag.nodeId, ...childIds],
+          value,
         ),
         'update-node',
       )
@@ -2036,7 +2075,7 @@ ${nodeMarkup}
     }, value)
     const movedSet = new Set(drag.nodeIds)
     const changedGroups = new Set(moved.nodes.flatMap((node) => node.groupId && movedSet.has(node.id) && !movedSet.has(node.groupId) ? [node.groupId] : []))
-    emitChange(recenterMovedNodeEdges(fitGroupsToChildren(moved, changedGroups), drag.nodeIds), 'move-node')
+    emitChange(recenterMovedNodeEdges(fitGroupsToChildren(moved, changedGroups), drag.nodeIds, value), 'move-node')
   }, [activeGroupId, connectorAnchorAtPoint, emitChange, gridSize, nodeById, pointFromEvent, setViewport, snapToGrid, updateEdgeEndpoint, updateEdgeSegment, value, viewport.zoom])
 
   const handlePointerUp = useCallback((event: PointerEvent<HTMLDivElement>) => {
@@ -2078,13 +2117,15 @@ ${nodeMarkup}
         fromAnchor: drag.fromAnchor,
         toAnchor: hit.anchor,
         toEnd: drag.toEnd,
+        routingMode: 'manual',
       } as Partial<CanvasEdge<EdgeExtra>>
       createEdgeBetween(drag.fromNodeId, hit.node.id, edgePartial)
       setPendingConnectorAnchor(null)
+      setActiveTool('select')
       return
     }
     setPendingConnectorAnchor({ nodeId: drag.fromNodeId, ...drag.fromAnchor, toEnd: drag.toEnd })
-  }, [connectorAnchorAtPoint, createEdgeBetween, createFreeEdge, createNodeAt, createNodeInRect, gridSize, pointFromEvent, snapToGrid])
+  }, [connectorAnchorAtPoint, createEdgeBetween, createFreeEdge, createNodeAt, createNodeInRect, gridSize, pointFromEvent, setActiveTool, snapToGrid])
   const undo = useCallback(() => {
     const previous = undoStackRef.current.pop()
     if (!previous) return false
@@ -2151,6 +2192,7 @@ ${nodeMarkup}
         fromNode: idMap.get(edge.fromNode) ?? edge.fromNode,
         toNode: idMap.get(edge.toNode) ?? edge.toNode,
         style: edge.style ? { ...edge.style } : undefined,
+        waypoints: edge.waypoints?.map((point) => ({ x: point.x + 40, y: point.y + 40 })),
       })) as Array<CanvasEdge<EdgeExtra>>
 
     emitChange({ nodes: [...value.nodes, ...nextNodes], edges: [...value.edges, ...nextEdges] }, 'paste')

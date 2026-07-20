@@ -152,7 +152,10 @@ export function defaultEdgeConnection(fromNode: CanvasNode, toNode: CanvasNode):
   let toSide: JsonCanvasSide
   let style: CanvasEdgeStyle | undefined
 
-  if (dx < 0) {
+  if (dx < 0 && Math.abs(dx) >= Math.abs(dy)) {
+    // Treat a leftward connection as a back edge only when its movement is
+    // primarily horizontal. A target that remains clearly above or below the
+    // source should keep using the facing vertical sides as it moves laterally.
     fromSide = 'bottom'
     toSide = 'bottom'
     style = { routing: 'elbow' }

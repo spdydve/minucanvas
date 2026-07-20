@@ -5,9 +5,9 @@ import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { MinuCanvas } from './MinuCanvas'
 import { createCanvasNode } from './model'
-import type { CanvasChangeContext, CanvasSelection, JsonCanvasDocument } from './types'
+import type { CanvasChangeContext, CanvasSelection, CanvasTool, JsonCanvasDocument } from './types'
 
-function renderCanvasHarness(initialDocument: JsonCanvasDocument, initialSelection: CanvasSelection) {
+function renderCanvasHarness(initialDocument: JsonCanvasDocument, initialSelection: CanvasSelection, defaultTool: CanvasTool = 'select') {
   let latestDocument = initialDocument
   let latestSelection = initialSelection
   let latestChangeContext: CanvasChangeContext | null = null
@@ -18,6 +18,7 @@ function renderCanvasHarness(initialDocument: JsonCanvasDocument, initialSelecti
     return (
       <MinuCanvas
         value={document}
+        defaultTool={defaultTool}
         onChange={(next, context) => {
           latestDocument = next
           latestChangeContext = context
@@ -92,6 +93,60 @@ describe('MinuCanvas linked nodes', () => {
 })
 
 describe('MinuCanvas connector routing', () => {
+  it.each([
+    ['arrow', 'arrow'],
+    ['line', 'none'],
+  ] as const)('marks a user-drawn %s connector as manual', async (tool, toEnd) => {
+    const initialDocument: JsonCanvasDocument = {
+      nodes: [
+        createCanvasNode({ id: 'A', text: 'A', x: 0, y: 0, width: 120, height: 80 }),
+        createCanvasNode({ id: 'B', text: 'B', x: 260, y: 0, width: 120, height: 80 }),
+      ],
+      edges: [],
+    }
+    Object.defineProperty(window, 'PointerEvent', { configurable: true, value: MouseEvent })
+    const view = renderCanvasHarness(initialDocument, { nodeIds: [], edgeIds: [] }, tool)
+    const canvas = view.container.querySelector<HTMLElement>('.minucanvas')!
+    const fromNode = view.container.querySelector<HTMLElement>('[data-minucanvas-node-id="A"]')!
+    fromNode.setPointerCapture = vi.fn()
+
+    fireEvent.pointerDown(fromNode, { pointerId: 1, clientX: 120, clientY: 40 })
+    fireEvent.pointerMove(canvas, { pointerId: 1, clientX: 260, clientY: 40 })
+    fireEvent.pointerUp(canvas, { pointerId: 1, clientX: 260, clientY: 40 })
+
+    await waitFor(() => expect(view.latestDocument.edges).toHaveLength(1))
+    expect(view.latestDocument.edges[0]).toMatchObject({
+      fromNode: 'A',
+      toNode: 'B',
+      toEnd,
+      routingMode: 'manual',
+    })
+    expect(canvas.dataset.tool).toBe('select')
+  })
+  it('offsets manual connector waypoints when copying and pasting a subgraph', async () => {
+    const initialDocument: JsonCanvasDocument = {
+      nodes: [
+        createCanvasNode({ id: 'A', text: 'A', x: 0, y: 0, width: 120, height: 80 }),
+        createCanvasNode({ id: 'B', text: 'B', x: 260, y: 0, width: 120, height: 80 }),
+      ],
+      edges: [{
+        id: 'edge-1',
+        fromNode: 'A',
+        toNode: 'B',
+        routingMode: 'manual',
+        waypoints: [{ x: 140, y: 120 }],
+      }],
+    }
+    const view = renderCanvasHarness(initialDocument, { nodeIds: ['A', 'B'], edgeIds: [] })
+    const canvas = view.container.querySelector<HTMLElement>('.minucanvas')!
+
+    fireEvent.keyDown(canvas, { key: 'c', metaKey: true })
+    fireEvent.keyDown(canvas, { key: 'v', metaKey: true })
+
+    await waitFor(() => expect(view.latestDocument.edges).toHaveLength(2))
+    expect(view.latestDocument.edges.find((edge) => edge.id !== 'edge-1')?.waypoints).toEqual([{ x: 180, y: 160 }])
+  })
+
   it('preserves a manually positioned endpoint when a connected node moves', async () => {
     const initialDocument: JsonCanvasDocument = {
       nodes: [
@@ -127,6 +182,59 @@ describe('MinuCanvas connector routing', () => {
       toAnchor: { side: 'left', position: 0.75 },
       routingMode: 'manual',
     })
+  })
+
+  it('moves manual connector waypoints with a multi-node selection', async () => {
+    const initialDocument: JsonCanvasDocument = {
+      nodes: [
+        createCanvasNode({ id: 'A', text: 'A', x: 40, y: 40, width: 120, height: 80 }),
+        createCanvasNode({ id: 'B', text: 'B', x: 260, y: 140, width: 120, height: 80 }),
+      ],
+      edges: [
+        {
+          id: 'edge-1',
+          fromNode: 'A',
+          toNode: 'B',
+          routingMode: 'manual',
+          waypoints: [{ x: 100, y: 160 }, { x: 220, y: 160 }],
+        },
+      ],
+    }
+    const view = renderCanvasHarness(initialDocument, { nodeIds: ['A', 'B'], edgeIds: [] })
+    const canvas = view.container.querySelector<HTMLElement>('.minucanvas')!
+
+    fireEvent.keyDown(canvas, { key: 'ArrowRight' })
+
+    await waitFor(() => expect(view.latestDocument.nodes.find((node) => node.id === 'A')?.x).toBe(60))
+    expect(view.latestDocument.edges[0]?.waypoints).toEqual([{ x: 120, y: 160 }, { x: 240, y: 160 }])
+  })
+
+  it('moves manual connector waypoints with a group instead of pinning them to the canvas', async () => {
+    const initialDocument: JsonCanvasDocument = {
+      nodes: [
+        createCanvasNode({ id: 'group', type: 'group', x: 0, y: 0, width: 420, height: 260 }),
+        createCanvasNode({ id: 'A', text: 'A', groupId: 'group', x: 40, y: 40, width: 120, height: 80 }),
+        createCanvasNode({ id: 'B', text: 'B', groupId: 'group', x: 260, y: 140, width: 120, height: 80 }),
+      ],
+      edges: [
+        {
+          id: 'edge-1',
+          fromNode: 'A',
+          toNode: 'B',
+          fromAnchor: { side: 'bottom', position: 0.5 },
+          toAnchor: { side: 'left', position: 0.5 },
+          routingMode: 'manual',
+          waypoints: [{ x: 100, y: 160 }, { x: 220, y: 160 }],
+        },
+      ],
+    }
+    const view = renderCanvasHarness(initialDocument, { nodeIds: ['group'], edgeIds: [] })
+    const canvas = view.container.querySelector<HTMLElement>('.minucanvas')!
+
+    fireEvent.keyDown(canvas, { key: 'ArrowRight' })
+
+    await waitFor(() => expect(view.latestDocument.nodes.find((node) => node.id === 'group')?.x).toBe(20))
+    expect(view.latestDocument.edges[0]?.waypoints).toEqual([{ x: 120, y: 160 }, { x: 240, y: 160 }])
   })
 
   it('preserves manually routed connector waypoints when a connected node moves', async () => {

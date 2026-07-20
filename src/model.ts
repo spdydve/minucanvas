@@ -199,7 +199,7 @@ export function duplicateSelection<NodeExtra extends Record<string, unknown>, Ed
       fromNode: idMap.get(edge.fromNode) ?? edge.fromNode,
       toNode: idMap.get(edge.toNode) ?? edge.toNode,
       style: edge.style ? { ...edge.style } : undefined,
-      waypoints: edge.waypoints?.map((point) => ({ ...point })),
+      waypoints: edge.waypoints?.map((point) => ({ x: point.x + 40, y: point.y + 40 })),
     })) as Array<CanvasEdge<EdgeExtra>>
 
   return {
