@@ -32,11 +32,13 @@ import {
   groupSelection as groupSelectionInDocument,
   nodeLabel,
   normalizeSelection,
+  resetEdgeRoute as resetEdgeRouteInDocument,
   sendSelectionBackward,
   sendSelectionToBack,
   shapeForTool,
   snapPoint,
   ungroupSelection as ungroupSelectionInDocument,
+  updateEdge as updateEdgeInDocument,
   updateNode,
 } from './model'
 import { resolveCanvasInteractionMode } from './profiles'
@@ -44,6 +46,7 @@ import { isEditableTarget, toolFromKey } from './shortcuts'
 import type {
   CanvasAlignment,
   CanvasChangeContext,
+  CanvasChangeSource,
   CanvasDistribution,
   CanvasEdge,
   CanvasEdgeAnchor,
@@ -465,6 +468,29 @@ function selectionEquals(a: CanvasSelection, b: CanvasSelection): boolean {
   return a.nodeIds.join('\u0000') === b.nodeIds.join('\u0000') && a.edgeIds.join('\u0000') === b.edgeIds.join('\u0000')
 }
 
+function changedEntityIds<T extends { id: string }>(current: readonly T[], next: readonly T[]): string[] {
+  const currentById = new Map(current.map((entity) => [entity.id, entity]))
+  const nextById = new Map(next.map((entity) => [entity.id, entity]))
+  return [...new Set([...currentById.keys(), ...nextById.keys()])]
+    .filter((id) => currentById.get(id) !== nextById.get(id))
+}
+
+function changeContext(
+  current: JsonCanvasDocument,
+  next: JsonCanvasDocument,
+  reason: CanvasChangeContext['reason'],
+  source?: CanvasChangeSource,
+): CanvasChangeContext {
+  const nodeIds = changedEntityIds(current.nodes, next.nodes)
+  const edgeIds = changedEntityIds(current.edges, next.edges)
+  return {
+    reason,
+    ...(nodeIds.length > 0 ? { nodeIds } : {}),
+    ...(edgeIds.length > 0 ? { edgeIds } : {}),
+    ...(source ? { source } : {}),
+  }
+}
+
 function oppositeSide(side: JsonCanvasSide): JsonCanvasSide {
   if (side === 'top') return 'bottom'
   if (side === 'right') return 'left'
@@ -745,6 +771,7 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
     defaultTool = 'select',
     selectedNodeIds,
     selectedEdgeIds,
+    viewport: controlledViewport,
     initialViewport,
     autoFit = false,
     onSelectionChange,
@@ -783,7 +810,7 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
   const autoFitDoneRef = useRef(false)
   const valueRef = useRef(value)
   const [, forcePointerFrame] = useState(0)
-  const [viewport, setViewportState] = useState<CanvasViewport>(initialViewport ?? { x: 0, y: 0, zoom: 1 })
+  const [localViewport, setLocalViewport] = useState<CanvasViewport>(initialViewport ?? controlledViewport ?? { x: 0, y: 0, zoom: 1 })
   const [localTool, setLocalTool] = useState<CanvasTool>(defaultTool)
   const [localSelection, setLocalSelection] = useState<CanvasSelection>({ nodeIds: [], edgeIds: [] })
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null)
@@ -797,6 +824,7 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
   const [exportOptions, setExportOptions] = useState<ExportOptions>({ area: 'canvas', fileType: 'png', quality: 2, background: 'solid', colorMode: 'dark' })
   const activeTool = tool ?? localTool
+  const viewport = controlledViewport ?? localViewport
   const selection = normalizeSelection({
     nodeIds: selectedNodeIds ?? localSelection.nodeIds,
     edgeIds: selectedEdgeIds ?? localSelection.edgeIds,
@@ -810,10 +838,10 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
   const setViewport = useCallback(
     (next: CanvasViewport) => {
       const normalized = { ...next, zoom: clampZoom(next.zoom) }
-      setViewportState(normalized)
+      if (controlledViewport === undefined) setLocalViewport(normalized)
       onViewportChange?.(normalized)
     },
-    [onViewportChange],
+    [controlledViewport, onViewportChange],
   )
 
   const emitSelection = useCallback(
@@ -837,7 +865,7 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
   )
 
   const emitChange = useCallback(
-    (nextValue: JsonCanvasDocument<NodeExtra, EdgeExtra>, reason: CanvasChangeContext['reason']) => {
+    (nextValue: JsonCanvasDocument<NodeExtra, EdgeExtra>, reason: CanvasChangeContext['reason'], source?: CanvasChangeSource) => {
       const transactionSnapshot = undoTransactionRef.current
       if (transactionSnapshot) {
         if (!undoTransactionPushedRef.current) {
@@ -849,7 +877,7 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
         undoStackRef.current = [...undoStackRef.current.slice(-99), cloneCanvas(value)]
         redoStackRef.current = []
       }
-      onChange(nextValue, { reason })
+      onChange(nextValue, changeContext(value, nextValue, reason, source))
     },
     [onChange, value],
   )
@@ -998,7 +1026,7 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
           delete next.imageError
           return next
         }),
-      }, { reason: 'update-node' })
+      }, { reason: 'update-node', nodeIds: [selectedImageNode.id], source: 'async' })
     } catch (error) {
       const current = valueRef.current
       onChange({
@@ -1006,7 +1034,7 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
         nodes: current.nodes.map((node) => node.id === selectedImageNode.id
           ? ({ ...node, imageStatus: 'failed', imageError: error instanceof Error ? error.message : 'Upload failed' } as CanvasNode<NodeExtra>)
           : node),
-      }, { reason: 'update-node' })
+      }, { reason: 'update-node', nodeIds: [selectedImageNode.id], source: 'async' })
     }
   }, [allowInlineImages, emitChange, onChange, onExternalContentWarning, onUpload, readOnly, selectedImageNode, value])
 
@@ -1592,14 +1620,44 @@ ${nodeMarkup}
   const fitView = useCallback(() => {
     const root = rootRef.current
     if (!root) return
-    const bounds = canvasBounds(value.nodes, 100)
+    const bounds = documentBoundsWithFreeEdges(value, 100)
     const zoom = clampZoom(Math.min(root.clientWidth / bounds.width, root.clientHeight / bounds.height, 1.2))
     setViewport({
       zoom,
       x: root.clientWidth / 2 - (bounds.x + bounds.width / 2) * zoom,
       y: root.clientHeight / 2 - (bounds.y + bounds.height / 2) * zoom,
     })
-  }, [setViewport, value.nodes])
+  }, [setViewport, value])
+
+  const updateNodeFromApi = useCallback((nodeId: string, updater: (node: CanvasNode<NodeExtra>) => CanvasNode<NodeExtra>): CanvasNode<NodeExtra> | null => {
+    const current = value.nodes.find((node) => node.id === nodeId)
+    if (!current) return null
+    const updated = updater(current)
+    emitChange(updateNode(value, nodeId, () => updated), 'update-node', 'api')
+    return updated
+  }, [emitChange, value])
+
+  const updateEdgeFromApi = useCallback((edgeId: string, updater: (edge: CanvasEdge<EdgeExtra>) => CanvasEdge<EdgeExtra>): CanvasEdge<EdgeExtra> | null => {
+    const current = value.edges.find((edge) => edge.id === edgeId)
+    if (!current) return null
+    const updated = updater(current)
+    emitChange(updateEdgeInDocument(value, edgeId, () => updated), 'update-edge', 'api')
+    return updated
+  }, [emitChange, value])
+
+  const resetEdgeRouteFromApi = useCallback((edgeId: string): CanvasEdge<EdgeExtra> | null => {
+    if (!value.edges.some((edge) => edge.id === edgeId)) return null
+    const next = resetEdgeRouteInDocument(value, edgeId)
+    const updated = next.edges.find((edge) => edge.id === edgeId) ?? null
+    emitChange(next, 'update-edge', 'api')
+    return updated
+  }, [emitChange, value])
+
+  const resetSelectedEdgeRoutes = useCallback(() => {
+    if (readOnly || selection.edgeIds.length === 0) return
+    const next = selection.edgeIds.reduce((document, edgeId) => resetEdgeRouteInDocument(document, edgeId), value)
+    emitChange(next, 'update-edge')
+  }, [emitChange, readOnly, selection.edgeIds, value])
 
   useImperativeHandle(ref, () => ({
     getDocument: () => value,
@@ -1615,6 +1673,10 @@ ${nodeMarkup}
       return node
     },
     createEdge: createEdgeBetween,
+    updateNode: updateNodeFromApi,
+    updateEdge: updateEdgeFromApi,
+    resetEdgeRoute: resetEdgeRouteFromApi,
+    setSelection: emitSelection,
     groupSelection: groupCurrentSelection,
     frameSelection: frameCurrentSelection,
     ungroupSelection: ungroupCurrentSelection,
@@ -1626,11 +1688,13 @@ ${nodeMarkup}
     distributeSelection: distributeCurrentSelection,
     exportSvg,
     exportPng,
+    getViewport: () => viewport,
+    setViewport,
     zoomIn: () => zoomBy(ZOOM_STEP),
     zoomOut: () => zoomBy(-ZOOM_STEP),
     resetView,
     fitView,
-  }), [alignCurrentSelection, bringCurrentSelectionForward, bringCurrentSelectionToFront, createEdgeBetween, deleteCurrentSelection, distributeCurrentSelection, emitChange, emitSelection, exportPng, exportSvg, fitView, frameCurrentSelection, groupCurrentSelection, resetView, selection, sendCurrentSelectionBackward, sendCurrentSelectionToBack, setActiveTool, ungroupCurrentSelection, value, zoomBy])
+  }), [alignCurrentSelection, bringCurrentSelectionForward, bringCurrentSelectionToFront, createEdgeBetween, deleteCurrentSelection, distributeCurrentSelection, emitSelection, exportPng, exportSvg, fitView, frameCurrentSelection, groupCurrentSelection, resetEdgeRouteFromApi, resetView, selection, sendCurrentSelectionBackward, sendCurrentSelectionToBack, setActiveTool, setViewport, ungroupCurrentSelection, updateEdgeFromApi, updateNodeFromApi, value, viewport, zoomBy])
 
   useEffect(() => {
     if (autoFocus) rootRef.current?.focus()
@@ -2025,7 +2089,7 @@ ${nodeMarkup}
     const previous = undoStackRef.current.pop()
     if (!previous) return false
     redoStackRef.current = [...redoStackRef.current.slice(-99), cloneCanvas(value)]
-    onChange(previous, { reason: 'programmatic' })
+    onChange(previous, changeContext(value, previous, 'programmatic'))
     emitSelection({ nodeIds: [], edgeIds: [] })
     return true
   }, [emitSelection, onChange, value])
@@ -2034,7 +2098,7 @@ ${nodeMarkup}
     const next = redoStackRef.current.pop()
     if (!next) return false
     undoStackRef.current = [...undoStackRef.current.slice(-99), cloneCanvas(value)]
-    onChange(next, { reason: 'programmatic' })
+    onChange(next, changeContext(value, next, 'programmatic'))
     emitSelection({ nodeIds: [], edgeIds: [] })
     return true
   }, [emitSelection, onChange, value])
@@ -2153,7 +2217,7 @@ ${nodeMarkup}
                 delete next.imageError
                 return next
               }),
-            }, { reason: 'update-node' })
+            }, { reason: 'update-node', nodeIds: [node.id], source: 'async' })
           })
           .catch((error: unknown) => {
             const current = valueRef.current.nodes.some((currentNode) => currentNode.id === node.id)
@@ -2164,7 +2228,7 @@ ${nodeMarkup}
               nodes: current.nodes.map((currentNode) => currentNode.id === node.id
                 ? ({ ...currentNode, imageStatus: 'failed', imageError: error instanceof Error ? error.message : 'Upload failed' } as CanvasNode<NodeExtra>)
                 : currentNode),
-            }, { reason: 'update-node' })
+            }, { reason: 'update-node', nodeIds: [node.id], source: 'async' })
           })
       }
       return true
@@ -2204,7 +2268,7 @@ ${nodeMarkup}
                   const size = linkNodeSize(resolvedLabel)
                   return { ...currentNode, label: resolvedLabel, width: size.width, height: size.height }
                 }),
-              }, { reason: 'update-node' })
+              }, { reason: 'update-node', nodeIds: [node.id], source: 'async' })
             }).catch(() => undefined)
           }
           return true
@@ -3205,6 +3269,7 @@ ${nodeMarkup}
           <button type="button" onClick={() => { emitSelection({ nodeIds: value.nodes.map((node) => node.id), edgeIds: value.edges.map((edge) => edge.id) }); closeContextMenu() }}><span>Select all</span><kbd>⌘ A</kbd></button>
           <div className="minucanvas-context-menu__separator" />
           <button type="button" onClick={() => { setExportOptions((options) => ({ ...options, area: selection.nodeIds.length > 0 || selection.edgeIds.length > 0 ? 'selection' : 'canvas' })); setExportDialogOpen(true); closeContextMenu() }}><span>Export…</span></button>
+          <button type="button" onClick={() => { resetSelectedEdgeRoutes(); closeContextMenu() }} disabled={readOnly || selection.edgeIds.length === 0}><span>Reset connector route</span></button>
           <div className="minucanvas-context-menu__separator" />
           <button type="button" onClick={() => { groupCurrentSelection(); closeContextMenu() }} disabled={readOnly || selection.nodeIds.length < 2}><span>Group selection</span><kbd>⌘ G</kbd></button>
           <button type="button" onClick={() => { frameCurrentSelection(); closeContextMenu() }} disabled={readOnly || selection.nodeIds.length < 2}><span>Frame selection</span></button>

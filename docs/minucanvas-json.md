@@ -199,6 +199,7 @@ type CanvasEdge = {
   fromEnd?: 'none' | 'arrow'
   toEnd?: 'none' | 'arrow'
   style?: CanvasEdgeStyle
+  routingMode?: 'auto' | 'manual'
   waypoints?: Array<{ x: number; y: number }>
 }
 ```
@@ -206,6 +207,8 @@ type CanvasEdge = {
 `fromPoint` and `toPoint` are optional free-standing endpoints for lines/arrows that are drawn directly on the canvas instead of attached to nodes.
 
 `waypoints` are optional editable route points in canvas coordinates. When present, the edge renders through those points between the start and end anchors.
+
+`routingMode: 'manual'` preserves user-positioned endpoints and waypoints when connected nodes move. `resetEdgeRoute(document, edgeId)` returns the edge to automatic endpoint placement and removes manual waypoints.
 
 ### Precise anchors
 

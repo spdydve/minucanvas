@@ -19,12 +19,14 @@ export {
   frameSelection,
   groupSelection,
   nodeLabel,
+  resetEdgeRoute,
   sendSelectionBackward,
   sendSelectionToBack,
   shapeForTool,
   snap,
   snapPoint,
   ungroupSelection,
+  updateEdge,
   updateNode,
 } from './model'
 export {
@@ -78,6 +80,8 @@ export type {
   AnyCanvasDocumentProfile,
   CanvasAlignment,
   CanvasChangeContext,
+  CanvasChangeReason,
+  CanvasChangeSource,
   CanvasContextAction,
   CanvasDistribution,
   CanvasDocumentKind,

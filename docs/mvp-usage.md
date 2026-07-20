@@ -308,6 +308,22 @@ const svg = canvasRef.current?.exportSvg()
 const pngDataUrl = await canvasRef.current?.exportPng()
 ```
 
+The handle also provides host-driven editing and viewport operations:
+
+```tsx
+canvasRef.current?.updateNode('node-1', (node) => ({ ...node, label: 'Updated' }))
+canvasRef.current?.updateEdge('edge-1', (edge) => ({ ...edge, label: 'Approved' }))
+canvasRef.current?.resetEdgeRoute('edge-1')
+canvasRef.current?.setSelection({ nodeIds: ['node-1'], edgeIds: [] })
+canvasRef.current?.setViewport({ x: 120, y: 80, zoom: 1.25 })
+```
+
+Hosts can control the viewport declaratively as well:
+
+```tsx
+<MinuCanvas viewport={viewport} onViewportChange={setViewport} value={value} onChange={setValue} />
+```
+
 Notes:
 
 - SVG export is safest for external images.

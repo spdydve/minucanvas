@@ -141,17 +141,27 @@ export interface CanvasSelection {
   edgeIds: string[]
 }
 
+export type CanvasChangeReason =
+  | 'create-node'
+  | 'update-node'
+  | 'update-edge'
+  | 'move-node'
+  | 'delete'
+  | 'create-edge'
+  | 'duplicate'
+  | 'paste'
+  | 'programmatic'
+
+export type CanvasChangeSource = 'pointer' | 'keyboard' | 'api' | 'paste' | 'async'
+
 export interface CanvasChangeContext {
-  reason:
-    | 'create-node'
-    | 'update-node'
-    | 'update-edge'
-    | 'move-node'
-    | 'delete'
-    | 'create-edge'
-    | 'duplicate'
-    | 'paste'
-    | 'programmatic'
+  reason: CanvasChangeReason
+  /** IDs added, removed, or replaced by this change. */
+  nodeIds?: string[]
+  /** IDs added, removed, or replaced by this change. */
+  edgeIds?: string[]
+  source?: CanvasChangeSource
+  transactionId?: string
 }
 
 export interface CanvasShortcut {
@@ -190,6 +200,10 @@ export interface CanvasHandle<NodeExtra extends Record<string, unknown> = Record
   setTool: (tool: CanvasTool) => void
   createNode: (partial: Partial<CanvasNode<NodeExtra>>) => CanvasNode<NodeExtra>
   createEdge: (fromNode: string, toNode: string, partial?: Partial<CanvasEdge<EdgeExtra>>) => CanvasEdge<EdgeExtra> | null
+  updateNode: (nodeId: string, updater: (node: CanvasNode<NodeExtra>) => CanvasNode<NodeExtra>) => CanvasNode<NodeExtra> | null
+  updateEdge: (edgeId: string, updater: (edge: CanvasEdge<EdgeExtra>) => CanvasEdge<EdgeExtra>) => CanvasEdge<EdgeExtra> | null
+  resetEdgeRoute: (edgeId: string) => CanvasEdge<EdgeExtra> | null
+  setSelection: (selection: CanvasSelection) => void
   groupSelection: () => CanvasNode<NodeExtra> | null
   frameSelection: () => CanvasNode<NodeExtra> | null
   ungroupSelection: () => void
@@ -201,6 +215,8 @@ export interface CanvasHandle<NodeExtra extends Record<string, unknown> = Record
   distributeSelection: (distribution: CanvasDistribution) => void
   exportSvg: () => string
   exportPng: () => Promise<string>
+  getViewport: () => CanvasViewport
+  setViewport: (viewport: CanvasViewport) => void
   zoomIn: () => void
   zoomOut: () => void
   resetView: () => void
@@ -245,6 +261,8 @@ export interface MinuCanvasProps<NodeExtra extends Record<string, unknown> = Rec
   selectedEdgeIds?: string[]
   onSelectionChange?: (selection: CanvasSelection) => void
   onToolChange?: (tool: CanvasTool) => void
+  /** Controlled viewport. Pair with `onViewportChange` to synchronize or persist camera state. */
+  viewport?: CanvasViewport
   initialViewport?: CanvasViewport
   /** Fit the current document into the visible canvas once after mount. */
   autoFit?: boolean

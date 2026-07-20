@@ -5,11 +5,12 @@ import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { MinuCanvas } from './MinuCanvas'
 import { createCanvasNode } from './model'
-import type { CanvasSelection, JsonCanvasDocument } from './types'
+import type { CanvasChangeContext, CanvasSelection, JsonCanvasDocument } from './types'
 
 function renderCanvasHarness(initialDocument: JsonCanvasDocument, initialSelection: CanvasSelection) {
   let latestDocument = initialDocument
   let latestSelection = initialSelection
+  let latestChangeContext: CanvasChangeContext | null = null
 
   function Harness() {
     const [document, setDocument] = useState(initialDocument)
@@ -17,8 +18,9 @@ function renderCanvasHarness(initialDocument: JsonCanvasDocument, initialSelecti
     return (
       <MinuCanvas
         value={document}
-        onChange={(next) => {
+        onChange={(next, context) => {
           latestDocument = next
+          latestChangeContext = context
           setDocument(next)
         }}
         selectedNodeIds={selection.nodeIds}
@@ -36,8 +38,23 @@ function renderCanvasHarness(initialDocument: JsonCanvasDocument, initialSelecti
     ...view,
     get latestDocument() { return latestDocument },
     get latestSelection() { return latestSelection },
+    get latestChangeContext() { return latestChangeContext },
   }
 }
+
+describe('MinuCanvas viewport control', () => {
+  it('renders from a controlled viewport and follows prop updates', () => {
+    const document: JsonCanvasDocument = { nodes: [], edges: [] }
+    const view = render(
+      <MinuCanvas value={document} onChange={() => {}} viewport={{ x: 40, y: 60, zoom: 1.25 }} />,
+    )
+
+    expect(view.container.querySelector<HTMLElement>('.minucanvas-world')?.style.transform).toBe('translate(40px, 60px) scale(1.25)')
+
+    view.rerender(<MinuCanvas value={document} onChange={() => {}} viewport={{ x: -20, y: 10, zoom: 0.75 }} />)
+    expect(view.container.querySelector<HTMLElement>('.minucanvas-world')?.style.transform).toBe('translate(-20px, 10px) scale(0.75)')
+  })
+})
 
 describe('MinuCanvas linked nodes', () => {
   it('opens a selected node URL with Cmd/Ctrl+Enter', () => {
@@ -102,6 +119,7 @@ describe('MinuCanvas connector routing', () => {
     fireEvent.keyDown(canvas, { key: 'ArrowRight' })
 
     await waitFor(() => expect(view.latestDocument.nodes.find((node) => node.id === 'A')?.x).toBe(20))
+    expect(view.latestChangeContext).toMatchObject({ reason: 'move-node', nodeIds: ['A'] })
     expect(view.latestDocument.edges[0]).toMatchObject({
       fromSide: 'top',
       toSide: 'left',

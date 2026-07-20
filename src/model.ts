@@ -1,3 +1,4 @@
+import { defaultEdgeConnection } from './geometry'
 import type { CanvasAlignment, CanvasDistribution, CanvasEdge, CanvasNode, CanvasSelection, CanvasShape, CanvasTool, JsonCanvasDocument } from './types'
 
 const DEFAULT_NODE_WIDTH = 220
@@ -118,6 +119,42 @@ export function updateNode<NodeExtra extends Record<string, unknown>, EdgeExtra 
     ...document,
     nodes: document.nodes.map((node) => (node.id === nodeId ? updater(node) : node)),
   }
+}
+
+export function updateEdge<NodeExtra extends Record<string, unknown>, EdgeExtra extends Record<string, unknown>>(
+  document: JsonCanvasDocument<NodeExtra, EdgeExtra>,
+  edgeId: string,
+  updater: (edge: CanvasEdge<EdgeExtra>) => CanvasEdge<EdgeExtra>,
+): JsonCanvasDocument<NodeExtra, EdgeExtra> {
+  return {
+    ...document,
+    edges: document.edges.map((edge) => (edge.id === edgeId ? updater(edge) : edge)),
+  }
+}
+
+export function resetEdgeRoute<NodeExtra extends Record<string, unknown>, EdgeExtra extends Record<string, unknown>>(
+  document: JsonCanvasDocument<NodeExtra, EdgeExtra>,
+  edgeId: string,
+): JsonCanvasDocument<NodeExtra, EdgeExtra> {
+  const nodes = new Map(document.nodes.map((node) => [node.id, node]))
+  return updateEdge(document, edgeId, (edge) => {
+    const { waypoints: _waypoints, ...route } = edge
+    const fromNode = nodes.get(edge.fromNode)
+    const toNode = nodes.get(edge.toNode)
+    if (!fromNode || !toNode) return { ...route, routingMode: 'auto' } as CanvasEdge<EdgeExtra>
+
+    const defaults = defaultEdgeConnection(fromNode, toNode)
+    const style = { ...(defaults.style ?? {}), ...(edge.style ?? {}) }
+    return {
+      ...route,
+      routingMode: 'auto',
+      fromSide: defaults.fromSide,
+      fromAnchor: defaults.fromAnchor,
+      toSide: defaults.toSide,
+      toAnchor: defaults.toAnchor,
+      style: Object.keys(style).length > 0 ? style : undefined,
+    } as CanvasEdge<EdgeExtra>
+  })
 }
 
 export function deleteSelection<NodeExtra extends Record<string, unknown>, EdgeExtra extends Record<string, unknown>>(

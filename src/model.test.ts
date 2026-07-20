@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createCanvasEdge, createCanvasNode, deleteSelection, duplicateSelection, frameSelection, shapeForTool, snapPoint } from './model'
+import { createCanvasEdge, createCanvasNode, deleteSelection, duplicateSelection, frameSelection, resetEdgeRoute, shapeForTool, snapPoint, updateEdge } from './model'
 import type { JsonCanvasDocument } from './types'
 
 describe('canvas model helpers', () => {
@@ -11,6 +11,41 @@ describe('canvas model helpers', () => {
     expect(start.type).toBe('text')
     expect(end.shape).toBe('diamond')
     expect(edge.toEnd).toBe('arrow')
+  })
+
+  it('updates one edge without disturbing host metadata or other edges', () => {
+    type EdgeExtra = { host: { relationshipId: string } }
+    const edge = createCanvasEdge<EdgeExtra>('a', 'b', { id: 'edge-1', host: { relationshipId: 'relationship-1' } })
+    const other = createCanvasEdge<EdgeExtra>('b', 'c', { id: 'edge-2', host: { relationshipId: 'relationship-2' } })
+    const document: JsonCanvasDocument<Record<string, unknown>, EdgeExtra> = { nodes: [], edges: [edge, other] }
+
+    const updated = updateEdge(document, edge.id, (current) => ({ ...current, label: 'Updated' }))
+
+    expect(updated.edges[0]).toMatchObject({ label: 'Updated', host: { relationshipId: 'relationship-1' } })
+    expect(updated.edges[1]).toBe(other)
+  })
+
+  it('resets manual connector geometry to an automatic route', () => {
+    const from = createCanvasNode({ id: 'from', x: 0, y: 0, width: 100, height: 80 })
+    const to = createCanvasNode({ id: 'to', x: 300, y: 0, width: 100, height: 80 })
+    const edge = createCanvasEdge('from', 'to', {
+      id: 'edge-1',
+      fromAnchor: { side: 'top', position: 0.25 },
+      toAnchor: { side: 'bottom', position: 0.75 },
+      routingMode: 'manual',
+      waypoints: [{ x: 50, y: -80 }, { x: 350, y: -80 }],
+    })
+
+    const reset = resetEdgeRoute({ nodes: [from, to], edges: [edge] }, edge.id).edges[0]
+
+    expect(reset).toMatchObject({
+      routingMode: 'auto',
+      fromSide: 'right',
+      toSide: 'left',
+      fromAnchor: { side: 'right', position: 0.5 },
+      toAnchor: { side: 'left', position: 0.5 },
+    })
+    expect(reset?.waypoints).toBeUndefined()
   })
 
   it('preserves typed host metadata when creating nodes and edges', () => {
