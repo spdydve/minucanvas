@@ -13,6 +13,24 @@ describe('canvas model helpers', () => {
     expect(edge.toEnd).toBe('arrow')
   })
 
+  it('preserves typed host metadata when creating nodes and edges', () => {
+    type NodeExtra = { host: { recordId: string; status?: string } }
+    type EdgeExtra = { host: { relationshipId: string } }
+
+    const node = createCanvasNode<NodeExtra>({
+      id: 'record',
+      text: 'Record',
+      host: { recordId: 'record-1', status: 'active' },
+    })
+    const edge = createCanvasEdge<EdgeExtra>('record', 'other', {
+      id: 'relationship',
+      host: { relationshipId: 'relationship-1' },
+    })
+
+    expect(node.host).toEqual({ recordId: 'record-1', status: 'active' })
+    expect(edge.host).toEqual({ relationshipId: 'relationship-1' })
+  })
+
   it('deletes selected nodes and attached edges', () => {
     const document: JsonCanvasDocument = {
       nodes: [createCanvasNode({ id: 'a' }), createCanvasNode({ id: 'b' })],

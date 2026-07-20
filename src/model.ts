@@ -56,6 +56,7 @@ export function createCanvasNode<NodeExtra extends Record<string, unknown> = Rec
   const width = partial.width ?? (type === 'group' ? 360 : shape === 'diamond' ? DEFAULT_DIAMOND_WIDTH : shape === 'ellipse' ? DEFAULT_ELLIPSE_SIZE : DEFAULT_NODE_WIDTH)
   const height = partial.height ?? (type === 'group' ? 240 : shape === 'diamond' ? DEFAULT_DIAMOND_HEIGHT : shape === 'ellipse' ? DEFAULT_ELLIPSE_SIZE : DEFAULT_NODE_HEIGHT)
   const node = {
+    ...partial,
     id: partial.id ?? createId('node'),
     type,
     x: partial.x ?? 0,
@@ -88,6 +89,7 @@ export function createCanvasEdge<EdgeExtra extends Record<string, unknown> = Rec
   partial: Partial<CanvasEdge<EdgeExtra>> = {},
 ): CanvasEdge<EdgeExtra> {
   return {
+    ...partial,
     id: partial.id ?? createId('edge'),
     fromNode,
     toNode,
