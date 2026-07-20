@@ -228,6 +228,10 @@ function edgeDash(edge: CanvasEdge): string | undefined {
   return undefined
 }
 
+function edgeMarkerStart(edge: CanvasEdge): string | undefined {
+  return (edge.fromEnd ?? 'none') === 'arrow' ? 'url(#minucanvas-arrow)' : undefined
+}
+
 function edgeMarkerEnd(edge: CanvasEdge): string | undefined {
   return (edge.toEnd ?? 'arrow') === 'arrow' ? 'url(#minucanvas-arrow)' : undefined
 }
@@ -1552,7 +1556,7 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
     const background = options.colorMode === 'dark' ? '#151515' : '#ffffff'
     const nodes = new Map(exportDocument.nodes.map((node) => [node.id, node]))
     const markerMarkup = exportDocument.edges
-      .filter((edge) => (edge.toEnd ?? 'arrow') === 'arrow')
+      .filter((edge) => (edge.fromEnd ?? 'none') === 'arrow' || (edge.toEnd ?? 'arrow') === 'arrow')
       .map((edge) => {
         const stroke = edge.style?.stroke ?? edge.color ?? defaultColor
         return `<marker id="arrow-${escapeXml(edge.id)}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="${stroke}" /></marker>`
@@ -1566,12 +1570,13 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
       const stroke = edge.style?.stroke ?? edge.color ?? defaultColor
       const strokeWidth = edge.style?.strokeWidth ?? 1.5
       const dash = edgeDash(edge) ? ` stroke-dasharray="${edgeDash(edge)}"` : ''
-      const marker = (edge.toEnd ?? 'arrow') === 'arrow' ? ` marker-end="url(#arrow-${escapeXml(edge.id)})"` : ''
+      const markerStart = (edge.fromEnd ?? 'none') === 'arrow' ? ` marker-start="url(#arrow-${escapeXml(edge.id)})"` : ''
+      const markerEnd = (edge.toEnd ?? 'arrow') === 'arrow' ? ` marker-end="url(#arrow-${escapeXml(edge.id)})"` : ''
       const labelPoint = edge.label ? renderedEdgeLabelPoint(edge, fromNode, toNode) : null
       const label = edge.label && labelPoint
         ? svgText(edge.label, labelPoint.x, labelPoint.y, { color: defaultColor, fontSize: 12, fontWeight: 500, textAnchor: 'middle' })
         : ''
-      return `<path d="${path}" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round"${dash}${marker} />\n${label}`
+      return `<path d="${path}" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round"${dash}${markerStart}${markerEnd} />\n${label}`
     }).join('\n')
     const nodeMarkup = exportDocument.nodes.map((node) => {
       const shape = svgShapeForNode(node, defaultColor)
@@ -2751,6 +2756,7 @@ ${nodeMarkup}
                   strokeWidth={edge.style?.strokeWidth}
                   strokeDasharray={edgeDash(edge)}
                   opacity={edge.style?.opacity}
+                  markerStart={edgeMarkerStart(edge)}
                   markerEnd={edgeMarkerEnd(edge)}
                   pointerEvents="none"
                 />

@@ -43,6 +43,7 @@ export type CanvasTool =
   | 'pill'
 
 export type CanvasEdgeRouting = 'straight' | 'curved' | 'elbow'
+export type CanvasEdgeArrowMode = 'none' | 'end' | 'start' | 'both'
 export type CanvasStrokeStyle = 'solid' | 'dashed' | 'dotted' | 'sketch'
 export type CanvasThemeMode = 'light' | 'dark' | 'system'
 export type CanvasShapeTheme = 'outline' | 'filled' | 'soft'

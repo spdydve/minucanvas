@@ -88,6 +88,7 @@ export type {
   CanvasDocumentProfile,
   CanvasEdge,
   CanvasEdgeAnchor,
+  CanvasEdgeArrowMode,
   CanvasEdgeRouting,
   CanvasEdgeStyle,
   CanvasExternalContentWarning,

@@ -192,6 +192,7 @@ Text-note nodes automatically resize to fit their text plus padding when edited.
 - Pill is a capsule with straight sides and fully rounded ends.
 - Diamond defaults to a grid-friendly 3:2 ratio.
 - Select nodes or edges to use the style toolbar for shape, stroke/fill/text colors, stroke style, width, font size/alignment, and edge routing.
+- For selected connectors, the line style panel can set no arrows, an arrow at the end, an arrow at the start, or arrows at both ends. The choice applies to every selected edge.
 - Elbow connectors render with rounded corners. Select an elbow connector and drag a horizontal or vertical segment to customize its route.
 - Arrow and line tools can also draw free-standing marks when dragged on empty canvas space. Start from a node outline to create a connector; start on empty canvas to create an unconnected line/arrow. Hold `Shift` while drawing to snap to 15° increments for clean horizontal, vertical, and diagonal lines.
 - User-drawn connectors preserve their chosen endpoint sides as manual routes. Syntax, mind-map, keyboard-generated, and programmatic connectors remain automatic unless configured otherwise.

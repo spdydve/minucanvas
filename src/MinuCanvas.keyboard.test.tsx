@@ -1,11 +1,11 @@
 /* @vitest-environment jsdom */
 
 import { fireEvent, render, waitFor } from '@testing-library/react'
-import { useState } from 'react'
+import { createRef, useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { MinuCanvas } from './MinuCanvas'
 import { createCanvasNode } from './model'
-import type { CanvasChangeContext, CanvasSelection, CanvasTool, JsonCanvasDocument } from './types'
+import type { CanvasChangeContext, CanvasHandle, CanvasSelection, CanvasTool, JsonCanvasDocument } from './types'
 
 function renderCanvasHarness(initialDocument: JsonCanvasDocument, initialSelection: CanvasSelection, defaultTool: CanvasTool = 'select') {
   let latestDocument = initialDocument
@@ -89,6 +89,47 @@ describe('MinuCanvas linked nodes', () => {
 
     expect(view.getByLabelText('Open linked URL')).toBeTruthy()
     expect(view.getByTestId('note-adornment')).toBeTruthy()
+  })
+})
+
+describe('MinuCanvas connector arrowheads', () => {
+  it('renders independent start and end markers with backwards-compatible defaults', () => {
+    const document: JsonCanvasDocument = {
+      nodes: [
+        createCanvasNode({ id: 'A', text: 'A', x: 0, y: 0, width: 120, height: 80 }),
+        createCanvasNode({ id: 'B', text: 'B', x: 260, y: 0, width: 120, height: 80 }),
+      ],
+      edges: [
+        { id: 'default', fromNode: 'A', toNode: 'B' },
+        { id: 'start', fromNode: 'A', toNode: 'B', fromEnd: 'arrow', toEnd: 'none' },
+        { id: 'both', fromNode: 'A', toNode: 'B', fromEnd: 'arrow', toEnd: 'arrow' },
+      ],
+    }
+    const view = render(<MinuCanvas value={document} onChange={() => {}} />)
+    const path = (id: string) => view.container.querySelector<SVGPathElement>(`[data-minucanvas-edge-id="${id}"] + .minucanvas-edge__path`)!
+
+    expect(path('default').getAttribute('marker-start')).toBeNull()
+    expect(path('default').getAttribute('marker-end')).toBe('url(#minucanvas-arrow)')
+    expect(path('start').getAttribute('marker-start')).toBe('url(#minucanvas-arrow)')
+    expect(path('start').getAttribute('marker-end')).toBeNull()
+    expect(path('both').getAttribute('marker-start')).toBe('url(#minucanvas-arrow)')
+    expect(path('both').getAttribute('marker-end')).toBe('url(#minucanvas-arrow)')
+  })
+
+  it('exports start and end arrowheads to SVG', () => {
+    const ref = createRef<CanvasHandle>()
+    const document: JsonCanvasDocument = {
+      nodes: [
+        createCanvasNode({ id: 'A', text: 'A', x: 0, y: 0, width: 120, height: 80 }),
+        createCanvasNode({ id: 'B', text: 'B', x: 260, y: 0, width: 120, height: 80 }),
+      ],
+      edges: [{ id: 'both', fromNode: 'A', toNode: 'B', fromEnd: 'arrow', toEnd: 'arrow' }],
+    }
+    render(<MinuCanvas ref={ref} value={document} onChange={() => {}} />)
+
+    const svg = ref.current!.exportSvg()
+    expect(svg).toContain('marker-start="url(#arrow-both)"')
+    expect(svg).toContain('marker-end="url(#arrow-both)"')
   })
 })
 

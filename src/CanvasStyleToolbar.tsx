@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type {
   CanvasChangeContext,
+  CanvasEdgeArrowMode,
   CanvasEdgeRouting,
   CanvasEdgeStyle,
   CanvasNodeStyle,
@@ -23,6 +24,12 @@ type StyleTarget = 'nodes' | 'edges' | 'both'
 const SHAPES: CanvasShape[] = ['text', 'rectangle', 'ellipse', 'diamond', 'pill', 'parallelogram', 'hexagon']
 const STROKE_STYLES: CanvasStrokeStyle[] = ['solid', 'dashed', 'dotted', 'sketch']
 const LINE_ROUTINGS: CanvasEdgeRouting[] = ['elbow', 'straight', 'curved']
+const ARROW_MODES: Array<{ mode: CanvasEdgeArrowMode; label: string }> = [
+  { mode: 'none', label: 'No arrows' },
+  { mode: 'end', label: 'Arrow at end' },
+  { mode: 'start', label: 'Arrow at start' },
+  { mode: 'both', label: 'Arrows at both ends' },
+]
 const LINE_WIDTHS = [1, 1.5, 2.5, 4]
 const FONT_SIZES = [
   { label: 'S', name: 'Small', value: 12 },
@@ -38,6 +45,27 @@ function mixedValue<T>(values: T[], fallback: T): T | '' {
   if (values.length === 0) return fallback
   const first = values[0]
   return values.every((value) => value === first) ? first : ''
+}
+
+function edgeArrowMode(edge: { fromEnd?: 'none' | 'arrow'; toEnd?: 'none' | 'arrow' }): CanvasEdgeArrowMode {
+  const start = (edge.fromEnd ?? 'none') === 'arrow'
+  const end = (edge.toEnd ?? 'arrow') === 'arrow'
+  if (start && end) return 'both'
+  if (start) return 'start'
+  if (end) return 'end'
+  return 'none'
+}
+
+function ArrowModeIcon({ mode }: { mode: CanvasEdgeArrowMode }) {
+  const start = mode === 'start' || mode === 'both'
+  const end = mode === 'end' || mode === 'both'
+  return (
+    <svg viewBox="0 0 90 20" aria-hidden="true">
+      <path d="M12 10H78" />
+      {start ? <path d="M12 10l8-5M12 10l8 5" /> : null}
+      {end ? <path d="M78 10l-8-5M78 10l-8 5" /> : null}
+    </svg>
+  )
 }
 
 function ShapeIcon({ shape }: { shape: CanvasShape }) {
@@ -85,6 +113,7 @@ export function CanvasStyleToolbar<NodeExtra extends Record<string, unknown> = R
     ...selectedEdges.map((edge) => edge.style?.strokeStyle ?? 'solid'),
   ], 'solid' as CanvasStrokeStyle)
   const routing = mixedValue(selectedEdges.map((edge) => edge.style?.routing ?? 'elbow'), 'elbow' as CanvasEdgeRouting)
+  const arrowMode = mixedValue(selectedEdges.map(edgeArrowMode), 'end' as CanvasEdgeArrowMode)
   const fontSize = mixedValue(selectedNodes.map((node) => node.style?.fontSize ?? 14), 14)
   const fontSizeOption = FONT_SIZES.find((option) => option.value === fontSize)
   const textAlign = mixedValue(selectedNodes.map((node) => node.style?.textAlign ?? 'center'), 'center')
@@ -99,6 +128,16 @@ export function CanvasStyleToolbar<NodeExtra extends Record<string, unknown> = R
       nodes: value.nodes.map((node) => selection.nodeIds.includes(node.id) ? { ...node, shape: nextShape } : node),
       edges: value.edges,
     }, 'update-node')
+  }
+
+  function updateArrowMode(mode: CanvasEdgeArrowMode) {
+    if (!hasEdges) return
+    const fromEnd = mode === 'start' || mode === 'both' ? 'arrow' : 'none'
+    const toEnd = mode === 'end' || mode === 'both' ? 'arrow' : 'none'
+    emit({
+      nodes: value.nodes,
+      edges: value.edges.map((edge) => selection.edgeIds.includes(edge.id) ? { ...edge, fromEnd, toEnd } : edge),
+    }, 'update-edge')
   }
 
   function updateStyles(nodeStyle: Partial<CanvasNodeStyle>, edgeStyle: Partial<CanvasEdgeStyle>, target: StyleTarget = 'both') {
@@ -186,6 +225,12 @@ export function CanvasStyleToolbar<NodeExtra extends Record<string, unknown> = R
                 {LINE_ROUTINGS.map((item) => (
                   <button key={item} type="button" className={routing === item ? 'is-active' : ''} onClick={() => updateStyles({}, { routing: item }, 'edges')}>
                     <span>{item}</span><svg viewBox="0 0 90 24" aria-hidden="true">{item === 'straight' ? <path d="M8 16L82 8" /> : item === 'curved' ? <path d="M8 16C32 16 48 8 82 8" /> : <path d="M8 16H44V8H82" />}</svg>
+                  </button>
+                ))}
+                <div className="minucanvas-style-toolbar__divider" />
+                {ARROW_MODES.map((item) => (
+                  <button key={item.mode} type="button" className={arrowMode === item.mode ? 'is-active' : ''} onClick={() => updateArrowMode(item.mode)}>
+                    <span>{item.label}</span><ArrowModeIcon mode={item.mode} />
                   </button>
                 ))}
               </>

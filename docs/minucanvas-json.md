@@ -210,6 +210,8 @@ type CanvasEdge = {
 
 `routingMode: 'manual'` preserves user-positioned endpoints and waypoints when connected nodes move. `resetEdgeRoute(document, edgeId)` returns the edge to automatic endpoint placement and removes manual waypoints.
 
+`fromEnd` and `toEnd` control arrowheads independently. For backwards compatibility, omitted values resolve as `fromEnd: 'none'` and `toEnd: 'arrow'`. Set both to `arrow` for a bidirectional connector, or both to `none` for a plain line.
+
 ### Precise anchors
 
 ```ts
