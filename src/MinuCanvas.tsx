@@ -2146,20 +2146,20 @@ ${nodeMarkup}
 
   const copyCurrentSelection = useCallback(() => {
     const copiedNodeIds = new Set(selection.nodeIds)
-    for (const edge of value.edges) {
-      if (selection.edgeIds.includes(edge.id)) {
-        copiedNodeIds.add(edge.fromNode)
-        copiedNodeIds.add(edge.toNode)
-      }
-    }
 
     const nodes = value.nodes
       .filter((node) => copiedNodeIds.has(node.id))
       .map((node) => ({ ...node, style: node.style ? { ...node.style } : undefined })) as Array<CanvasNode<NodeExtra>>
     const nodeIds = new Set(nodes.map((node) => node.id))
     const edges = value.edges
-      .filter((edge) => (selection.edgeIds.includes(edge.id) || (selection.nodeIds.includes(edge.fromNode) && selection.nodeIds.includes(edge.toNode))) && nodeIds.has(edge.fromNode) && nodeIds.has(edge.toNode))
-      .map((edge) => ({ ...edge, style: edge.style ? { ...edge.style } : undefined })) as Array<CanvasEdge<EdgeExtra>>
+      .filter((edge) => selection.edgeIds.includes(edge.id) || (nodeIds.has(edge.fromNode) && nodeIds.has(edge.toNode)))
+      .map((edge) => ({
+        ...edge,
+        fromPoint: edge.fromPoint ? { ...edge.fromPoint } : undefined,
+        toPoint: edge.toPoint ? { ...edge.toPoint } : undefined,
+        style: edge.style ? { ...edge.style } : undefined,
+        waypoints: edge.waypoints?.map((point) => ({ ...point })),
+      })) as Array<CanvasEdge<EdgeExtra>>
 
     if (nodes.length === 0 && edges.length === 0) return false
     const payload = { nodes, edges }
@@ -2170,7 +2170,7 @@ ${nodeMarkup}
 
   const pasteClipboard = useCallback(() => {
     const payload = clipboardRef.current
-    if (!payload || payload.nodes.length === 0) return false
+    if (!payload || (payload.nodes.length === 0 && payload.edges.length === 0)) return false
 
     const idMap = new Map<string, string>()
     const nextNodes = payload.nodes.map((node) => {
@@ -2184,13 +2184,17 @@ ${nodeMarkup}
         style: node.style ? { ...node.style } : undefined,
       } as CanvasNode<NodeExtra>
     })
+    const existingNodeIds = new Set(value.nodes.map((node) => node.id))
+    const endpointAvailable = (nodeId: string, point: Point | undefined) => nodeId ? idMap.has(nodeId) || existingNodeIds.has(nodeId) : Boolean(point)
     const nextEdges = payload.edges
-      .filter((edge) => idMap.has(edge.fromNode) && idMap.has(edge.toNode))
+      .filter((edge) => endpointAvailable(edge.fromNode, edge.fromPoint) && endpointAvailable(edge.toNode, edge.toPoint))
       .map((edge) => ({
         ...edge,
         id: createId('edge'),
         fromNode: idMap.get(edge.fromNode) ?? edge.fromNode,
+        fromPoint: edge.fromPoint ? { x: edge.fromPoint.x + 40, y: edge.fromPoint.y + 40 } : undefined,
         toNode: idMap.get(edge.toNode) ?? edge.toNode,
+        toPoint: edge.toPoint ? { x: edge.toPoint.x + 40, y: edge.toPoint.y + 40 } : undefined,
         style: edge.style ? { ...edge.style } : undefined,
         waypoints: edge.waypoints?.map((point) => ({ x: point.x + 40, y: point.y + 40 })),
       })) as Array<CanvasEdge<EdgeExtra>>

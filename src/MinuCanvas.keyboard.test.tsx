@@ -123,6 +123,25 @@ describe('MinuCanvas connector routing', () => {
     })
     expect(canvas.dataset.tool).toBe('select')
   })
+  it('copies a selected connector without copying its connected nodes', async () => {
+    const initialDocument: JsonCanvasDocument = {
+      nodes: [
+        createCanvasNode({ id: 'A', text: 'A', x: 0, y: 0, width: 120, height: 80 }),
+        createCanvasNode({ id: 'B', text: 'B', x: 260, y: 0, width: 120, height: 80 }),
+      ],
+      edges: [{ id: 'edge-1', fromNode: 'A', toNode: 'B', toEnd: 'arrow' }],
+    }
+    const view = renderCanvasHarness(initialDocument, { nodeIds: [], edgeIds: ['edge-1'] })
+    const canvas = view.container.querySelector<HTMLElement>('.minucanvas')!
+
+    fireEvent.keyDown(canvas, { key: 'c', metaKey: true })
+    fireEvent.keyDown(canvas, { key: 'v', metaKey: true })
+
+    await waitFor(() => expect(view.latestDocument.edges).toHaveLength(2))
+    expect(view.latestDocument.nodes).toHaveLength(2)
+    expect(view.latestDocument.edges.find((edge) => edge.id !== 'edge-1')).toMatchObject({ fromNode: 'A', toNode: 'B' })
+  })
+
   it('offsets manual connector waypoints when copying and pasting a subgraph', async () => {
     const initialDocument: JsonCanvasDocument = {
       nodes: [
