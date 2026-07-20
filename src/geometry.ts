@@ -262,6 +262,13 @@ function pointAtPolylineRatio(points: Point[], ratio: number): Point {
   return points[points.length - 1] ?? { x: 0, y: 0 }
 }
 
+function pointIsOutsideAnchor(point: Point, anchor: Point, side: JsonCanvasSide, epsilon = 0.5): boolean {
+  if (side === 'top') return point.y <= anchor.y + epsilon
+  if (side === 'right') return point.x >= anchor.x - epsilon
+  if (side === 'bottom') return point.y >= anchor.y - epsilon
+  return point.x <= anchor.x + epsilon
+}
+
 function elbowRoutePoints(start: Point, end: Point, fromSide: JsonCanvasSide, toSide: JsonCanvasSide): Point[] {
   const outset = 32
 
@@ -280,6 +287,30 @@ function elbowRoutePoints(start: Point, end: Point, fromSide: JsonCanvasSide, to
     }
     const x = Math.min(start.x, end.x) - outset
     return normalizeOrthogonalRoute([start, { x, y: start.y }, { x, y: end.y }, end])
+  }
+
+  const fromIsHorizontal = fromSide === 'left' || fromSide === 'right'
+  const toIsHorizontal = toSide === 'left' || toSide === 'right'
+
+  // Perpendicular endpoints often need only one corner. Avoid adding fixed
+  // stubs and a midpoint when that corner already leaves and enters each node
+  // on the correct side.
+  if (fromIsHorizontal !== toIsHorizontal) {
+    const corner = fromIsHorizontal ? { x: end.x, y: start.y } : { x: start.x, y: end.y }
+    if (pointIsOutsideAnchor(corner, start, fromSide) && pointIsOutsideAnchor(corner, end, toSide)) {
+      return normalizeOrthogonalRoute([start, corner, end])
+    }
+  }
+
+  // Opposing, face-to-face endpoints need a single shared channel rather than
+  // a stub on each end plus another pair of midpoint turns.
+  if (fromIsHorizontal === toIsHorizontal) {
+    const midpoint = fromIsHorizontal
+      ? { first: { x: (start.x + end.x) / 2, y: start.y }, second: { x: (start.x + end.x) / 2, y: end.y } }
+      : { first: { x: start.x, y: (start.y + end.y) / 2 }, second: { x: end.x, y: (start.y + end.y) / 2 } }
+    if (pointIsOutsideAnchor(midpoint.first, start, fromSide) && pointIsOutsideAnchor(midpoint.second, end, toSide)) {
+      return normalizeOrthogonalRoute([start, midpoint.first, midpoint.second, end])
+    }
   }
 
   const startOut = controlOffset(fromSide, outset)

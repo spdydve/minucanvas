@@ -134,6 +134,45 @@ describe('connector anchor geometry', () => {
     expect(route.at(-1)).toEqual({ x: 300, y: 50 })
   })
 
+  it('uses a minimal route for face-to-face connectors', () => {
+    const fromNode = createCanvasNode({ id: 'from', x: 0, y: 0, width: 100, height: 80 })
+    const toNode = createCanvasNode({ id: 'to', x: 300, y: 160, width: 100, height: 80 })
+    const edge = {
+      id: 'edge',
+      fromNode: 'from',
+      toNode: 'to',
+      fromAnchor: { side: 'right' as const, position: 0.5 },
+      toAnchor: { side: 'left' as const, position: 0.5 },
+      style: { routing: 'elbow' as const },
+    }
+
+    expect(edgeRoutePoints(edge, fromNode, toNode)).toEqual([
+      { x: 100, y: 40 },
+      { x: 200, y: 40 },
+      { x: 200, y: 200 },
+      { x: 300, y: 200 },
+    ])
+  })
+
+  it('uses one bend when perpendicular endpoints already face a shared corner', () => {
+    const fromNode = createCanvasNode({ id: 'from', x: 300, y: 0, width: 100, height: 80 })
+    const toNode = createCanvasNode({ id: 'to', x: 0, y: 200, width: 100, height: 80 })
+    const edge = {
+      id: 'edge',
+      fromNode: 'from',
+      toNode: 'to',
+      fromAnchor: { side: 'bottom' as const, position: 0.5 },
+      toAnchor: { side: 'right' as const, position: 0.5 },
+      style: { routing: 'elbow' as const },
+    }
+
+    expect(edgeRoutePoints(edge, fromNode, toNode)).toEqual([
+      { x: 350, y: 80 },
+      { x: 350, y: 240 },
+      { x: 100, y: 240 },
+    ])
+  })
+
   it('routes same-side bottom connectors outside both nodes', () => {
     const fromNode = createCanvasNode({ id: 'from', x: 300, y: 300, width: 100, height: 80 })
     const toNode = createCanvasNode({ id: 'to', x: 0, y: 100, width: 100, height: 80 })
@@ -179,6 +218,6 @@ describe('connector anchor geometry', () => {
       fromAnchor: { side: 'right', position: 0.5 },
       toAnchor: { side: 'top', position: 0.5 },
       style: { routing: 'elbow' },
-    }, fromNode, toNode)).toEqual({ x: 191, y: 109 })
+    }, fromNode, toNode)).toEqual({ x: 250, y: 50 })
   })
 })

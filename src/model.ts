@@ -102,6 +102,7 @@ export function createCanvasEdge<EdgeExtra extends Record<string, unknown> = Rec
     label: partial.label,
     color: partial.color,
     style: partial.style,
+    routingMode: partial.routingMode,
     waypoints: partial.waypoints?.map((point) => ({ ...point })),
   } as CanvasEdge<EdgeExtra>
 }

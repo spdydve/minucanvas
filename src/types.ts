@@ -119,6 +119,8 @@ export type CanvasEdge<EdgeExtra extends Record<string, unknown> = Record<string
   label?: string
   color?: string
   style?: CanvasEdgeStyle
+  /** Whether endpoint placement and route geometry should be recalculated when connected nodes move. */
+  routingMode?: 'auto' | 'manual'
   /** Optional editable route points in canvas coordinates. */
   waypoints?: Point[]
 }

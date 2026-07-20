@@ -75,6 +75,42 @@ describe('MinuCanvas linked nodes', () => {
 })
 
 describe('MinuCanvas connector routing', () => {
+  it('preserves a manually positioned endpoint when a connected node moves', async () => {
+    const initialDocument: JsonCanvasDocument = {
+      nodes: [
+        createCanvasNode({ id: 'A', text: 'A', x: 0, y: 0, width: 120, height: 80 }),
+        createCanvasNode({ id: 'B', text: 'B', x: 260, y: 0, width: 120, height: 80 }),
+      ],
+      edges: [
+        {
+          id: 'edge-1',
+          fromNode: 'A',
+          toNode: 'B',
+          fromSide: 'top',
+          toSide: 'left',
+          fromAnchor: { side: 'top', position: 0.25 },
+          toAnchor: { side: 'left', position: 0.75 },
+          toEnd: 'arrow',
+          style: { routing: 'elbow' },
+          routingMode: 'manual',
+        },
+      ],
+    }
+    const view = renderCanvasHarness(initialDocument, { nodeIds: ['A'], edgeIds: [] })
+    const canvas = view.container.querySelector<HTMLElement>('.minucanvas')!
+
+    fireEvent.keyDown(canvas, { key: 'ArrowRight' })
+
+    await waitFor(() => expect(view.latestDocument.nodes.find((node) => node.id === 'A')?.x).toBe(20))
+    expect(view.latestDocument.edges[0]).toMatchObject({
+      fromSide: 'top',
+      toSide: 'left',
+      fromAnchor: { side: 'top', position: 0.25 },
+      toAnchor: { side: 'left', position: 0.75 },
+      routingMode: 'manual',
+    })
+  })
+
   it('preserves manually routed connector waypoints when a connected node moves', async () => {
     const initialDocument: JsonCanvasDocument = {
       nodes: [

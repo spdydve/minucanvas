@@ -649,7 +649,7 @@ function recenterMovedNodeEdges<NodeExtra extends Record<string, unknown>, EdgeE
       // waypoints, moving an attached node should preserve that hand-routed
       // path instead of re-running automatic endpoint placement and snapping
       // the connector back through nodes or other lines.
-      if (edge.waypoints?.length) return edge
+      if (edge.routingMode === 'manual' || edge.waypoints?.length) return edge
 
       // Mind map branch edges intentionally preserve their left/right side.
       // Re-running generic defaults would treat left branches as back-edges
@@ -1355,6 +1355,7 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
               fromNode: target.node.id,
               fromSide: target.anchor.side,
               fromAnchor: target.anchor,
+              routingMode: 'manual',
             } as CanvasEdge<EdgeExtra>
           }
           if (edge.fromNode === target.node.id) return edge
@@ -1364,14 +1365,15 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
             toNode: target.node.id,
             toSide: target.anchor.side,
             toAnchor: target.anchor,
+            routingMode: 'manual',
           } as CanvasEdge<EdgeExtra>
         }
         if (endpoint === 'from') {
           const { fromAnchor: _fromAnchor, fromSide: _fromSide, ...rest } = edge
-          return { ...rest, fromNode: '', fromPoint: target.point } as CanvasEdge<EdgeExtra>
+          return { ...rest, fromNode: '', fromPoint: target.point, routingMode: 'manual' } as CanvasEdge<EdgeExtra>
         }
         const { toAnchor: _toAnchor, toSide: _toSide, ...rest } = edge
-        return { ...rest, toNode: '', toPoint: target.point } as CanvasEdge<EdgeExtra>
+        return { ...rest, toNode: '', toPoint: target.point, routingMode: 'manual' } as CanvasEdge<EdgeExtra>
       })
       emitChange({ ...value, edges: nextEdges }, 'update-edge')
     },
@@ -1391,7 +1393,7 @@ function MinuCanvasInner<NodeExtra extends Record<string, unknown> = Record<stri
         if (!fromNode || !toNode || nextPoints.length < 2) return edge
 
         const waypoints = nextPoints.slice(1, -1).map((routePoint) => ({ ...routePoint }))
-        return { ...edge, waypoints }
+        return { ...edge, routingMode: 'manual' as const, waypoints }
       })
       emitChange({ ...value, edges: nextEdges }, 'update-edge')
     },

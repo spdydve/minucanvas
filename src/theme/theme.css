@@ -264,7 +264,7 @@
   position: absolute;
   transform: translate(-50%, -50%);
   z-index: 4;
-  max-width: 160px;
+  width: max-content;
   border: 1px solid var(--mc-border, var(--mc-canvas-border));
   border-radius: 999px;
   background: var(--mc-surface, var(--mc-canvas-surface));
